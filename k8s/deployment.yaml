@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sancus-deployment
+  namespace: # your stage namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sancus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sancus
+    spec:
+      containers:
+        - name: sancus
+          image: # Updated with placeholder
+          envFrom:
+            - configMapRef:
+                name: sancus-env
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 13
+            periodSeconds: 10

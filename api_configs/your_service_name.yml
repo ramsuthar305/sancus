@@ -1,0 +1,23 @@
+service:
+  name: your_service_name
+  host: YOUR_SERVICE_HOST
+  port: 80 # The exposed service port
+
+apis:
+  - name: Example resource Management
+    description: Some description
+    routes:
+      - path: /v1/example/api
+        methods: [POST]
+      - path: /v1/example/api
+        methods: [GET]
+        bypass: [AUTH, GEO_FENCE]
+
+  - name: Example resource Management 2
+    description: Some description
+    routes:
+      - path: /v1/example/api
+        methods: [POST]
+      - path: /v1/example/api
+        methods: [GET]
+        bypass: [AUTH, GEO_FENCE]
