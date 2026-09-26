@@ -20,11 +20,16 @@ function formatErrors(errors: ErrorObject[] | null | undefined): string {
     .join('; ');
 }
 
+/** `${VAR}` and `${VAR:-default}` in config files are replaced from the environment before parsing. */
+export function interpolateEnv(text: string): string {
+  return text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (_m, name, fallback) => process.env[name] ?? fallback ?? '');
+}
+
 /** Parse and validate one YAML file. Throws ConfigError on any problem. */
 export function loadConfigFile(filePath: string): APIConfig {
   let parsed: unknown;
   try {
-    parsed = yaml.load(fs.readFileSync(filePath, 'utf8'));
+    parsed = yaml.load(interpolateEnv(fs.readFileSync(filePath, 'utf8')));
   } catch (e) {
     throw new ConfigError(filePath, `YAML parse error: ${(e as Error).message}`);
   }

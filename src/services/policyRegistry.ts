@@ -46,7 +46,7 @@ class PolicyRegistry {
     if (!fs.existsSync(dir)) return;
     for (const f of fs.readdirSync(dir).filter((f) => ['.js', '.cjs'].includes(path.extname(f))).sort()) {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = require(path.join(dir, f));
+      const mod = require(path.resolve(dir, f));
       const defs: PolicyDefinition[] = Array.isArray(mod) ? mod : [mod.default ?? mod];
       defs.forEach((d) => this.register(d));
       logger.info({ file: f, policies: defs.map((d) => d.name) }, 'loaded policies');

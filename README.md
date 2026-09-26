@@ -133,6 +133,12 @@ npm run check -- ./cfg   # another directory
 
 ---
 
+## 🎓 Demo
+
+`demo/` is a runnable mini-platform (auth service, a users service, two catalog replicas, Redis) plus a 17-step guided tour that exercises every feature with real requests. `cd demo && docker compose up --build`, then `./tour.sh`. See [demo/README.md](demo/README.md).
+
+---
+
 ## ▶️ Quick start
 
 ```bash
@@ -228,6 +234,8 @@ Unknown policy names or invalid configs reject the config file at startup and on
 | `GET /metrics` | Prometheus: `sancus_http_requests_total`, `sancus_http_request_duration_seconds`, `sancus_upstream_duration_seconds`, `sancus_upstream_up`, `sancus_config_reloads_total`, `sancus_cache_events_total`, `sancus_rate_limited_total` |
 | `GET /routes` | Loaded services, routes, and registered policies |
 | `DELETE /cache/:service` | Purge every cached response for a service |
+
+Order of operations per request: match → policies → cache lookup for anonymous routes → geo-fence and auth → rate limit and cache lookup → proxy. A cache HIT is answered before the rate limiter runs, so rate limits count upstream work, not cached responses.
 
 Response headers you can rely on: `X-Request-Id` on everything; `X-RateLimit-Limit` / `-Remaining` / `-Reset`, `RateLimit-Limit` / `-Remaining` / `-Reset` and `Retry-After` on rate-limited routes; `X-Cache-Status` (`HIT`, `MISS`, `STALE`, `BYPASS`), `X-Cache-Key`, `Age`, `ETag` on cached routes; `Allow` on 405.
 
