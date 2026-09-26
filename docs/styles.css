@@ -212,3 +212,18 @@ img.missing + figcaption { display: none; }
 @media (max-width: 900px) { .reasons { grid-template-columns: 1fr; } .reason { grid-template-columns: 64px 1fr; } .reason img { width: 64px; height: 64px; } }
 .reason > .img-fallback { display: none; }
 .bento .w6 { grid-column: span 6; }
+
+/* ---- overflow guards (kept last so they win) ---- */
+/* grid tracks may shrink below their content's width; long code wraps or scrolls inside */
+.bento { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stat { grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); }
+.next { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+main p code, main li code, .bento code, .reason code { overflow-wrap: anywhere; }
+/* wide tables scroll inside their own box instead of widening the page */
+table { display: block; max-width: 100%; overflow-x: auto; }
+@media (max-width: 900px) {
+  .bento, .pair, .next { grid-template-columns: minmax(0, 1fr); }
+  .bento > div { grid-column: auto !important; }
+  td code { white-space: normal; overflow-wrap: anywhere; }
+}
