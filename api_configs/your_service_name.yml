@@ -9,7 +9,7 @@ apis:
     routes:
       - path: /v1/example/api
         methods: [POST]
-      - path: /v1/example/api/{id:int}
+      - path: /v1/example/api/{int:id}
         methods: [GET, PATCH]
 
   - name: Public resource

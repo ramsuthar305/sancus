@@ -7,7 +7,7 @@
 ## 🚀 Features
 
 - Declarative YAML-based API configuration, pre-compiled into a route registry at startup
-- Multiple upstream services with per-route method matching and typed path params (`{id:int}`, `{slug:str}`)
+- Multiple upstream services with per-route method matching and typed path params (`{int:id}`, `{str:slug}`)
 - Middleware bypass per route (`AUTH`, `GEO_FENCE`)
 - Token verification via an external auth service, with a shared Redis token cache
 - Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding window (`IP`, `USER`, `API_KEY`, `USER_OR_IP`)
@@ -51,7 +51,7 @@ service:
 apis:
   - name: Example resource
     routes:
-      - path: /v1/example/api/{id:int}
+      - path: /v1/example/api/{int:id}
         methods: [GET, PATCH]
       - path: /v1/public/search
         methods: [GET]
@@ -134,7 +134,7 @@ AUTH_USER_ID_FIELD=user.uuid
 
 ## 🌍 Geo-fencing
 
-Routes without `GEO_FENCE` in `bypass` require `latitude`/`longitude` (query or body) to fall inside a polygon from `in.json`. Replace the shipped GeoJSON with your own allowed territory.
+Routes without `GEO_FENCE` in `bypass` require an `X-COORDINATES: <lat>,<lon>` header. If the point falls inside any polygon in `in.json`, the request is rejected as a banned territory (`SE0405`). Missing or malformed coordinates return `SE0406` / `SE0407`. Replace the shipped GeoJSON with your own blocked regions, or ship an empty `FeatureCollection` to disable blocking while keeping the header requirement.
 
 ---
 
