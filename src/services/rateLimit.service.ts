@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import getLogger from '../configs/logger';
 import type { APIRoute, HttpMethod } from '../types/api';
-import DiscordService from '../utils/discordAlerts';
+import AlertService from '../utils/alerts';
 import RedisService from './redis.service';
 
 type RateLimitIdentifierStrategy = 'API_KEY' | 'USER' | 'IP' | 'USER_OR_IP';
@@ -37,12 +37,10 @@ class RateLimitService {
 
   private enabled: boolean;
 
-  private discordService?: DiscordService;
+  private alertService = AlertService.getInstance();
 
   private trustedIpSet: Set<string>;
 
-  private alertCooldown: Map<string, number> = new Map(); // identifier -> last alert timestamp
-  private alertCooldownMs: number = 60000; // 1 minute cooldown between alerts for same identifier
 
   private slidingWindowScript = `
     local key = KEYS[1]
@@ -80,13 +78,6 @@ class RateLimitService {
       .filter((ip) => ip.length > 0);
     this.trustedIpSet = new Set(trustedIps);
 
-    // Initialize Discord service if webhook URL is provided
-    const webhookUrl =
-    process.env.DISCORD_WEBHOOK_URL;
-    if (webhookUrl) {
-      this.discordService = new DiscordService(webhookUrl, true);
-    }
-    
     this.enabled = true;
   }
 
@@ -132,17 +123,6 @@ class RateLimitService {
       return forwarded[0];
     }
     return req.ip || req.socket.remoteAddress || 'unknown';
-  }
-
-  private shouldSendAlert(identifier: string): boolean {
-    const now = Date.now();
-    const lastAlertTime = this.alertCooldown.get(identifier);
-    
-    if (!lastAlertTime || now - lastAlertTime >= this.alertCooldownMs) {
-      this.alertCooldown.set(identifier, now);
-      return true;
-    }
-    return false;
   }
 
   private async consumeWindow(
@@ -214,7 +194,7 @@ class RateLimitService {
 
       if (!result.allowed) {
         // Send Discord alert only if cooldown has passed (throttle alerts)
-        if (this.discordService && this.shouldSendAlert(identifier)) {
+        if (this.alertService.enabled) {
           const ip = this.getClientIp(req);
           const userDetails = [
             `**IP Address:** ${ip}`,
@@ -225,9 +205,7 @@ class RateLimitService {
 
           const message = `${userDetails}\n**Endpoint:** ${method} ${route.path}\n**Service:** ${serviceName}\n**Limit Type:** Per Minute\n**Limit:** ${rateLimit.perMinute}${result.retryAfter ? `\n**Retry After:** ${result.retryAfter} seconds` : ''}\n**Time:** ${new Date().toISOString()}`;
 
-          this.discordService.sendAlert('⚠️ Rate Limit Exceeded', message).catch((error) => {
-            logger.error('Failed to send rate limit alert to Discord:', error);
-          });
+          this.alertService.alert(`ratelimit:`, '⚠️ Rate Limit Exceeded', message);
         }
   
         return {
@@ -250,7 +228,7 @@ class RateLimitService {
 
       if (!result.allowed) {
         // Send Discord alert only if cooldown has passed (throttle alerts)
-        if (this.discordService && this.shouldSendAlert(identifier)) {
+        if (this.alertService.enabled) {
           const ip = this.getClientIp(req);
           const userDetails = [
             `**IP Address:** ${ip}`,
@@ -261,9 +239,7 @@ class RateLimitService {
 
           const message = `${userDetails}\n**Endpoint:** ${method} ${route.path}\n**Service:** ${serviceName}\n**Limit Type:** Per Day\n**Limit:** ${rateLimit.perDay}${result.retryAfter ? `\n**Retry After:** ${result.retryAfter} seconds` : ''}\n**Time:** ${new Date().toISOString()}`;
 
-          this.discordService.sendAlert('⚠️ Rate Limit Exceeded', message).catch((error) => {
-            logger.error('Failed to send rate limit alert to Discord:', error);
-          });
+          this.alertService.alert(`ratelimit:`, '⚠️ Rate Limit Exceeded', message);
         }
         
         return {

@@ -2,6 +2,9 @@ import multer from 'multer';
 import { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
+import getLogger from '../configs/logger';
+
+const logger = getLogger();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -61,7 +64,7 @@ export const handleMultipart = (req: Request, res: Response, next: NextFunction)
     // Use multer to handle the multipart request
     upload.any()(req, res, (err) => {
       if (err) {
-        console.error('Multer error:', err);
+        logger.warn({ err: err.message }, 'multipart parse error');
         return res.status(400).json({
           error: 'File upload error',
           message: err.message

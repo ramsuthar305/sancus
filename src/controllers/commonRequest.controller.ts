@@ -2,7 +2,6 @@ import { NextFunction, Request, Response } from 'express';
 import httpProxy from 'http-proxy';
 import http from 'http';
 import https from 'https';
-import { v4 as uuidv4 } from 'uuid';
 import AuthServiceClient from '../clients/authClient';
 import getLogger from '../configs/logger';
 import { CacheConfig, HttpMethod } from '../types/api';
@@ -18,16 +17,16 @@ import FileUtil from '../utils/fileUtil';
 import RateLimitService from '../services/rateLimit.service';
 import RedisService from '../services/redis.service';
 import CacheService from '../services/cache.service';
-import DiscordService from '../utils/discordAlerts';
+import AlertService from '../utils/alerts';
 
 const geoUtils = GeoUtils.getInstance('./in.json');
 geoUtils
   .loadGeoJsonData()
   .then(() => {
-    console.log('GeoJSON data loaded successfully.');
+    logger.info('GeoJSON data loaded');
   })
   .catch((err) => {
-    console.error('Error loading GeoJSON data:', err);
+    logger.error({ err }, 'Error loading GeoJSON data');
     process.exit(1);
   });
 
@@ -85,22 +84,7 @@ async function setCachedToken(token: string, data: AuthResponse): Promise<void> 
     logger.error(`Token cache SET failed: ${(e as Error).message}`);
   }
 }
-const isProd = process.env.NODE_ENV === 'production';
-const alertService = new DiscordService(
-  process.env.DISCORD_WEBHOOK_URL || '',
-  isProd
-);
-
-// Alert cooldown — max 1 alert per endpoint per 60s to prevent flooding
-const ALERT_COOLDOWN_MS = 60_000;
-const alertCooldown = new Map<string, number>();
-function shouldAlert(key: string): boolean {
-  const now = Date.now();
-  const last = alertCooldown.get(key);
-  if (last && now - last < ALERT_COOLDOWN_MS) return false;
-  alertCooldown.set(key, now);
-  return true;
-}
+const alertService = AlertService.getInstance();
 
 // --- Shared proxy instance (reused across all requests) ---
 
@@ -124,7 +108,8 @@ proxy.on('proxyReq', (proxyReq, req, res) => {
   const ctx = (req as any).__sancusCtx as SancusProxyContext;
   if (!ctx) return;
 
-  proxyReq.setHeader('Correlation-ID', ctx.correlationalId);
+  proxyReq.setHeader('X-Request-Id', ctx.correlationalId);
+  proxyReq.setHeader('Correlation-ID', ctx.correlationalId); // legacy alias
   if (ctx.tokenDetails) {
     proxyReq.setHeader(AUTH_FORWARD_HEADER, String(ctx.tokenDetails.id));
   }
@@ -216,12 +201,7 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
   // Alert on backend 5xx responses
   if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
     const alertKey = `5xx:${ctx.method}:${ctx.basePath}:${proxyRes.statusCode}`;
-    if (shouldAlert(alertKey)) {
-      alertService.sendAlert(
-        `🚨 Backend ${proxyRes.statusCode} Error`,
-        `**Service:** ${ctx.serviceName}\n**Request:** ${ctx.method} ${ctx.basePath}\n**Status:** ${proxyRes.statusCode} ${proxyRes.statusMessage}\n**Correlation ID:** \`${ctx.correlationalId}\`\n**Destination:** ${ctx.destination}\n**Time:** ${new Date().toISOString()}`
-      );
-    }
+    alertService.alert(alertKey, `🚨 Backend ${proxyRes.statusCode} Error`, `**Service:** ${ctx.serviceName}\n**Request:** ${ctx.method} ${ctx.basePath}\n**Status:** ${proxyRes.statusCode} ${proxyRes.statusMessage}\n**Correlation ID:** \`${ctx.correlationalId}\`\n**Destination:** ${ctx.destination}\n**Time:** ${new Date().toISOString()}`);
   }
 
   // Cache the response if caching is configured for this route
@@ -265,12 +245,7 @@ proxy.on('error', (err, req, res) => {
   const ctx = (req as any).__sancusCtx as SancusProxyContext | undefined;
   const correlationId = ctx?.correlationalId || 'unknown';
   const alertKey = `proxy-error:${(req as any).method}:${(req as any).url}`;
-  if (shouldAlert(alertKey)) {
-    alertService.sendAlert(
-      '🚨 Proxy Error',
-      `**Request:** ${(req as any).method} ${(req as any).url}\n**Error:** ${err.message}\n**Correlation ID:** \`${correlationId}\`\n**Time:** ${new Date().toISOString()}`
-    );
-  }
+  alertService.alert(alertKey, '🚨 Proxy Error', `**Request:** ${(req as any).method} ${(req as any).url}\n**Error:** ${err.message}\n**Correlation ID:** \`${correlationId}\`\n**Time:** ${new Date().toISOString()}`);
   logger.error(`Proxy error: ${err.message} (correlationId=${correlationId})`);
   if (res && !((res as any).headersSent)) {
     (res as any).writeHead(502, { 'Content-Type': 'text/plain' });
@@ -323,7 +298,7 @@ class CommonRequestController {
       }
       throw new Error('Auth service call failed');
     } catch (error: any) {
-      console.error('Error calling auth service:', error.message);
+      logger.error({ err: error.message }, 'Error calling auth service');
       throw error; // Rethrow the error to be handled by the caller
     }
   }
@@ -355,7 +330,7 @@ class CommonRequestController {
         return false;
       }
     } catch (err) {
-      console.error('Error finding state:', err);
+      logger.error({ err }, 'Error finding state');
       new SancusResponse(ResponseEnum.INTERNAL_SERVER_ERROR, {}, res);
       return false;
     }
@@ -569,7 +544,7 @@ class CommonRequestController {
 
       // Attach context for shared proxy event handlers
       (req as any).__sancusCtx = {
-        correlationalId: uuidv4(),
+        correlationalId: (req as any).id as string,
         tokenDetails,
         uploadedFiles: (req as any).uploadedFiles,
         shouldCacheResponse: !!cacheKey && !!cacheConfig && method === 'GET',
@@ -592,14 +567,9 @@ class CommonRequestController {
         selfHandleResponse: swrStale,
       });
     } catch (error: any) {
-      const correlationId = (req as any)?.__sancusCtx?.correlationalId || (req as any).correlationalId || 'unknown';
+      const correlationId = (req as any).id || 'unknown';
       const alertKey = `error:${req.method}:${req.originalUrl}`;
-      if (shouldAlert(alertKey)) {
-        alertService.sendAlert(
-          '🚨 Gateway Pipeline Error',
-          `**Request:** ${req.method} ${req.originalUrl}\n**Error:** ${error.message}\n**Correlation ID:** \`${correlationId}\`\n**Time:** ${new Date().toISOString()}\n**Stack:** \`\`\`${(error.stack || '').slice(0, 400)}\`\`\``
-        );
-      }
+      alertService.alert(alertKey, '🚨 Gateway Pipeline Error', `**Request:** ${req.method} ${req.originalUrl}\n**Error:** ${error.message}\n**Correlation ID:** \`${correlationId}\`\n**Time:** ${new Date().toISOString()}\n**Stack:** \`\`\`${(error.stack || '').slice(0, 400)}\`\`\``);
       next(error);
     }
   }

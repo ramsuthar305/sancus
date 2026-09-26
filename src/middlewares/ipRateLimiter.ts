@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import DiscordService from '../utils/discordAlerts';
+import AlertService from '../utils/alerts';
 import getLogger from '../configs/logger';
 import RedisService from '../services/redis.service';
 
@@ -18,7 +18,6 @@ interface IPRateLimiterOptions {
   refillRatePerSecond?: number;
   cleanupIntervalMs?: number;
   trustedIps?: string[];
-  discordWebhookUrl?: string;
   burstAlertThreshold?: number; // Number of violations in burst window
   burstWindowMs?: number; // Time window for burst detection
   alertCooldownMs?: number; // Cooldown between alerts for same IP
@@ -93,7 +92,7 @@ class IPRateLimiter {
 
   private trustedIpSet: Set<string>;
 
-  private discordService?: DiscordService;
+  private alertService = AlertService.getInstance();
 
   private burstAlertThreshold: number;
 
@@ -125,14 +124,6 @@ class IPRateLimiter {
 
     // Initialize Redis service (singleton)
     this.redisService = RedisService.getInstance();
-
-    // Initialize Discord service if webhook URL is provided
-    const webhookUrl =
-      options.discordWebhookUrl ||
-      process.env.DISCORD_WEBHOOK_URL;
-    if (webhookUrl) {
-      this.discordService = new DiscordService(webhookUrl, true);
-    }
 
     this.cleanupTimer = setInterval(() => this.cleanup(), this.cleanupIntervalMs);
   }
@@ -325,17 +316,13 @@ class IPRateLimiter {
     violationCount: number,
     isBlocked: boolean = false
   ): Promise<void> {
-    if (!this.discordService) {
-      return;
-    }
-
     const heading = isBlocked
       ? '🚨 DDoS Detected - IP Blocked'
       : '🚨 Rate Limit Burst Detected';
     const blockDurationMinutes = Math.round(this.blockDurationMs / 60000);
     const message = `**IP Address:** ${ip}\n**Violations:** ${violationCount} in the last ${Math.round(this.burstWindowMs / 1000)} seconds\n**Rate Limit:** ${this.capacity} requests, ${this.refillRatePerSecond} tokens/sec\n${isBlocked ? `**Action:** IP blocked for ${blockDurationMinutes} minutes\n` : ''}**Time:** ${new Date().toISOString()}`;
 
-    await this.discordService.sendAlert(heading, message);
+    this.alertService.alert(`ip-burst:`, heading, message);
     
   }
 

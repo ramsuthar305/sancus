@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import GeoUtils from '../utils/geoFenceUtil';
 import SancusResponse from '../utils/responseUtil';
 import ResponseEnum from '../types/responseEnums';
+import getLogger from '../configs/logger';
+
+const logger = getLogger();
 
 class GeoFenceRequestController {
     private geoUtils = GeoUtils.getInstance('./in.json');
@@ -38,7 +41,7 @@ class GeoFenceRequestController {
                 new SancusResponse(ResponseEnum.ALLOWED_TERRITORY, {}, res);
             })
             .catch(err => {
-                console.error('Error finding state:', err);
+                logger.error({ err }, 'Error finding state');
                 new SancusResponse(ResponseEnum.INTERNAL_SERVER_ERROR, {}, res);
             });
     }

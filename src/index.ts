@@ -1,10 +1,9 @@
 // import 'newrelic';
 import bodyParser from 'body-parser';
 import express, { Express, Request, Response } from 'express';
-import httpContext from 'express-http-context';
 import path from 'path';
 import getLogger from './configs/logger';
-import { correlationMiddleware, requestFlowLogger } from './middlewares/requestLogger';
+import { accessLogger, requestIdMiddleware } from './middlewares/requestContext';
 import handleMultipart from './middlewares/multipartHandler';
 import APIConfigValidator from './utils/configValidator';
 import RouteRegistry from './services/routeRegistry';
@@ -32,6 +31,8 @@ const ipRateLimiter = new IPRateLimiter();
 const rateLimitService = RateLimitService.getInstance();
 const redisService = RedisService.getInstance();
 
+app.use(requestIdMiddleware);
+app.use(accessLogger);
 app.use(ipRateLimiter.middleware());
 app.use(compression({
   threshold: 1024,
@@ -44,14 +45,11 @@ app.use(compression({
     return compression.filter(req, res);
   },
 }));
-app.use(correlationMiddleware);
-app.use(requestFlowLogger);
-app.use(httpContext.middleware);
+
 app.use(handleMultipart);
 
 
 app.use((req: Request, res: Response, next: Function) => {
-  httpContext.set('headers', req.headers);
   CorsHandler.setHeaders(req, res);
   next();
 });

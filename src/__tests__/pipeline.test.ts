@@ -100,12 +100,11 @@ jest.mock('../utils/corsUtil', () => ({
   },
 }));
 
-// Mock DiscordService
-jest.mock('../utils/discordAlerts', () => {
-  return jest.fn().mockImplementation(() => ({
-    sendAlert: jest.fn(),
-  }));
-});
+// Mock AlertService
+jest.mock('../utils/alerts', () => ({
+  __esModule: true,
+  default: { getInstance: () => ({ alert: jest.fn(), enabled: false }) },
+}));
 
 // Mock auth client
 const mockVerifyToken = jest.fn();
@@ -116,11 +115,6 @@ jest.mock('../clients/authClient', () => ({
       verifyToken: mockVerifyToken,
     }),
   },
-}));
-
-// Mock uuid
-jest.mock('uuid', () => ({
-  v4: () => 'test-correlation-id',
 }));
 
 import CommonRequestController from '../controllers/commonRequest.controller';
@@ -166,6 +160,7 @@ describe('CommonRequestController.pipeline()', () => {
 
   function buildReq(overrides: Partial<any> = {}): any {
     return {
+      id: 'test-correlation-id',
       originalUrl: '/api/example/api/users/',
       method: 'GET',
       headers: {},

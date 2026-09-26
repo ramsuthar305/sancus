@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
-import { Logger } from 'winston';
 import getLogger from '../configs/logger';
 import { APIConfig, RateLimitConfig, Service } from '../types/api';
 import { forEach, some } from 'lodash';
@@ -11,7 +10,7 @@ import { forEach, some } from 'lodash';
 // This util is called from src/index.ts
 class APIConfigValidator {
   private folderPath: string;
-  private logger: Logger = getLogger();
+  private logger = getLogger();
 
   constructor(folderPath: string) {
     this.folderPath = folderPath;

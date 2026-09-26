@@ -1,14 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import GeoUtils from '../utils/geoFenceUtil';
 import SancusResponse from '../utils/responseUtil';
-import  ResponseEnum  from '../types/responseEnums';
+import ResponseEnum from '../types/responseEnums';
+import getLogger from '../configs/logger';
+
+const logger = getLogger();
 
 const geoUtils = GeoUtils.getInstance('./in.json');
 
 geoUtils.loadGeoJsonData().then(() => {
-    console.log('GeoJSON data loaded successfully.');
+    logger.info('GeoJSON data loaded');
 }).catch(err => {
-    console.error('Error loading GeoJSON data:', err);
+    logger.error({ err }, 'Error loading GeoJSON data');
     process.exit(1);
 });
 
@@ -40,7 +43,7 @@ export function geoFenceMiddleware(req: Request, res: Response, next: NextFuncti
             }
         })
         .catch(err => {
-            console.error('Error finding state:', err);
+            logger.error({ err }, 'Error finding state');
             res.status(500).json({ error: 'Internal server error.' });
         });
 }

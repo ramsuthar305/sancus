@@ -3,6 +3,9 @@ import http from 'http';
 import https from 'https';
 import ClientResponseStatus from '../types/requestStatus';
 import { AuthResponse } from '../types/auth';
+import getLogger from '../configs/logger';
+
+const logger = getLogger();
 
 // Auth wiring is fully env-driven so any token-verification service can be plugged in:
 //   AUTH_URL             base URL of the auth service (VERITAS_URL still accepted as a fallback)
@@ -67,10 +70,10 @@ class AuthServiceClient {
         } else if (axiosError.response?.status === 400) {
           return ClientResponseStatus.BAD_REQUEST;
         }
-        console.error('Auth request failed with status:', axiosError.response?.status);
+        logger.error({ status: axiosError.response?.status }, 'Auth request failed');
         throw new Error('Auth request failed');
       }
-      console.error('Auth request error:', error.message);
+      logger.error({ err: error.message }, 'Auth request error');
       throw error;
     }
   }

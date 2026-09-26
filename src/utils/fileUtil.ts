@@ -1,5 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import getLogger from '../configs/logger';
+
+const logger = getLogger();
 
 export interface FileValidationResult {
   isValid: boolean;
@@ -97,7 +100,7 @@ export class FileUtil {
           fs.unlinkSync(file.path);
         }
       } catch (error) {
-        console.error(`Error deleting file ${file.path}:`, error);
+        logger.warn({ err: (error as Error).message, path: file.path }, 'failed to delete upload');
       }
     });
   }
