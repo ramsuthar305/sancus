@@ -110,6 +110,8 @@ npm run check -- ./cfg   # another directory
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | Which peers may set X-Forwarded-For. The default covers a load balancer or ingress in private address space; list public proxies (e.g. Cloudflare CIDRs) explicitly. `false` is refused while the IP limiter is on |
 | `IP_RATE_LIMIT_ENABLED` | `true` | Global per-IP limiter on/off |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Token cache, rate limits, response cache. Everything fails open without it |
+| `REDIS_COMMAND_TIMEOUT_MS` / `REDIS_BACKOFF_MS` | `250` / `5000` | A Redis command slower than this counts as a hang; the gateway then skips Redis for the backoff and serves uncached |
+| `REDIS_ALERT_EVERY` | `1000` | While Redis is down, alert on the 1st request served without it and every N after (1st, 1001st, 2001st...), plus one alert on recovery |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated. `/regex/` entries must match the whole origin, e.g. `/https:\/\/([a-z0-9-]+\.)?example\.com/` |
 | `AUTH_URL` | | Base URL of your token-verification service (`VERITAS_URL` accepted) |
 | `AUTH_VERIFY_PATH` / `AUTH_VERIFY_METHOD` | `/v1/verify/token` / `POST` | Endpoint appended to `AUTH_URL` |

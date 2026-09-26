@@ -7,6 +7,7 @@ import PolicyRegistry from '../services/policyRegistry';
 import ProxyService, { ProxyContext } from '../services/proxy.service';
 import RateLimitService from '../services/rateLimit.service';
 import RouteRegistry from '../services/routeRegistry';
+import RedisService from '../services/redis.service';
 import { APIRoute, CacheConfig, HttpMethod } from '../types/api';
 import { AuthResponse } from '../types/auth';
 import ResponseEnum from '../types/responseEnums';
@@ -119,6 +120,7 @@ class CommonRequestController {
         CorsHandler.setHeaders(req, res);
         return res.status(200).send();
       }
+      RedisService.getInstance().noteRequest(); // counts requests served without Redis, for alerts
 
       // --- match ---
       const serviceName = UrlUtils.extractServiceName(originalUrl);
