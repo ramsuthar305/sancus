@@ -2,6 +2,7 @@ import multer from 'multer';
 import { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
+import FileUtil from '../utils/fileUtil';
 import getLogger from '../configs/logger';
 
 const logger = getLogger();
@@ -55,33 +56,23 @@ const upload = multer({
   }
 });
 
-// Middleware to handle multipart requests
-export const handleMultipart = (req: Request, res: Response, next: NextFunction) => {
-  // Check if the request is multipart/form-data
-  const contentType = req.get('content-type');
-  
-  if (contentType && contentType.includes('multipart/form-data')) {
-    // Use multer to handle the multipart request
-    upload.any()(req, res, (err) => {
+/**
+ * Parse a multipart body to disk. Called by the pipeline only after the route matched and auth,
+ * geo-fence and rate limits passed, so rejected requests never write a byte. Every file is deleted
+ * when the response ends, whatever the outcome. Resolves to the files, or null after answering 400.
+ */
+export function parseMultipart(req: Request, res: Response): Promise<Express.Multer.File[] | null> {
+  if (!String(req.get('content-type') || '').includes('multipart/form-data')) return Promise.resolve([]);
+  return new Promise((resolve) => {
+    res.once('close', () => FileUtil.cleanupFiles(Array.isArray(req.files) ? req.files : []));
+    upload.any()(req, res, (err: unknown) => {
       if (err) {
-        logger.warn({ err: err.message }, 'multipart parse error');
-        return res.status(400).json({
-          error: 'File upload error',
-          message: err.message
-        });
+        FileUtil.cleanupFiles(Array.isArray(req.files) ? req.files : []);
+        logger.warn({ err: (err as Error).message }, 'multipart parse error');
+        res.status(400).json({ error: 'File upload error', message: (err as Error).message });
+        return resolve(null);
       }
-      
-      // Add file information to request for later use
-      if (req.files && Array.isArray(req.files)) {
-        (req as any).uploadedFiles = req.files;
-      }
-      
-      next();
+      resolve(Array.isArray(req.files) ? req.files : []);
     });
-  } else {
-    // Not a multipart request, continue with normal flow
-    next();
-  }
-};
-
-export default handleMultipart; 
+  });
+}

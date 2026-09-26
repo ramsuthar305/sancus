@@ -54,6 +54,7 @@
 <tr><td><code>AUTH_FORWARD_HEADER</code></td><td>X-AUTHORIZED-FOR-ID</td><td>Header carrying the user id upstream</td></tr>
 <tr><td><code>AUTH_TIMEOUT_MS</code>, <code>AUTH_CACHE_TTL</code></td><td>5000, 60</td><td>Call timeout, positive-result cache seconds</td></tr>
 <tr><td><code>AUTH_FAIL_OPEN</code>, <code>AUTH_STATUS_ON_ERROR</code></td><td>false, 403</td><td>Behaviour when the verifier is down</td></tr>
+<tr><td><code>STRIP_REQUEST_HEADERS</code></td><td></td><td>More headers to delete from every client request, for anything else your services trust from the gateway</td></tr>
 </table>
 
 <h2>Three verifiers</h2>
@@ -80,7 +81,9 @@ AUTH_UPSTREAM_HEADERS=x-user-role,x-tenant</code></pre>
 <tr><td><code>X-Request-Id</code></td><td>the request id, for logs</td></tr>
 <tr><td><code>X-Forwarded-For</code>, <code>-Proto</code>, <code>-Host</code></td><td>the client's address and original host</td></tr>
 </table>
-<div class="note"><p>Your services never see the token unless you list <code>authorization</code> in a route's <code>headers.add</code>. They trust the gateway's user id header, so make sure nothing but the gateway can reach them.</p></div>
+<h2>Clients cannot set identity headers</h2>
+<p>Your services trust <code>X-AUTHORIZED-FOR-ID</code> and the headers in <code>AUTH_UPSTREAM_HEADERS</code> because the gateway sets them. So Sancus deletes any copy a client sends, on every route, the moment the request arrives. On a route with <code>bypass: [AUTH]</code>, or an anonymous request to a <code>resolveUser</code> route, the service receives no user id at all rather than one the client made up. If your services trust other headers from the gateway, list them in <code>STRIP_REQUEST_HEADERS</code> and they get the same treatment.</p>
+<div class="note"><p>This only protects services that the gateway alone can reach. Keep them off the public network, or anyone who can call them directly can set any header they like.</p></div>
 
 <nav class="next" aria-label="Pages"><a href="configuration.html"><small>Previous</small><b>Service config</b></a><a class="fwd" href="rate-limiting.html"><small>Next</small><b>Rate limiting</b></a></nav>
 <footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>

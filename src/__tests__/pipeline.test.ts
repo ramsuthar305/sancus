@@ -59,6 +59,7 @@ jest.mock('../services/redis.service', () => ({
   default: {
     getInstance: () => ({
       getClient: () => null,
+      noteRequest: jest.fn(),
     }),
   },
 }));
@@ -69,6 +70,7 @@ const mockCacheGet = jest.fn().mockResolvedValue(null);
 jest.mock('../services/cache.service', () => ({
   __esModule: true,
   default: {
+    encodingBucket: () => 'identity',
     getInstance: () => ({
       buildKey: mockBuildKey,
       get: mockCacheGet,

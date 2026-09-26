@@ -2,12 +2,13 @@ import { Request, Response } from "express";
 
 abstract class CorsHandler {
   // Comma-separated list, e.g. ALLOWED_ORIGINS="https://app.example.com,https://example.com"
-  // Entries wrapped in slashes are treated as regexes, e.g. "/\\.example\\.com$/"
+  // Entries wrapped in slashes are regexes matched against the WHOLE origin (anchored), e.g.
+  // "/https:\/\/([a-z0-9-]+\.)?example\.com/" allows example.com and its subdomains only.
   protected static allowedOrigins: (string | RegExp)[] = (process.env.ALLOWED_ORIGINS || "http://localhost:5173")
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean)
-    .map((o) => (o.startsWith("/") && o.endsWith("/") ? new RegExp(o.slice(1, -1)) : o));
+    .map((o) => (o.length > 2 && o.startsWith("/") && o.endsWith("/") ? new RegExp(`^(?:${o.slice(1, -1)})$`) : o));
 
   // Static method to set CORS headers
   public static setHeaders(req: Request, res: Response): void {

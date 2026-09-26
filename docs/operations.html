@@ -41,7 +41,7 @@
 <tr><td><code>GET /routes</code></td><td>Loaded services, routes and policies</td></tr>
 <tr><td><code>DELETE /cache/:service</code></td><td>Purge the response cache for one service</td></tr>
 </table>
-<p>Set <code>ADMIN_TOKEN</code> and the last three require <code>Authorization: Bearer &lt;token&gt;</code>. The health endpoints stay open for probes.</p>
+<p>The last three exist only when <code>ADMIN_TOKEN</code> is set, and then require <code>Authorization: Bearer &lt;token&gt;</code>. Without a token they answer 404, so nobody can read your routing table or wipe your cache. Prometheus sends the token with <code>authorization: { credentials: ... }</code> in its scrape config. The health endpoints stay open for probes.</p>
 
 <h2>Metrics</h2>
 <table>
@@ -58,6 +58,15 @@
 
 <h2>Logs</h2>
 <p>One JSON line per request from pino, with <code>requestId</code>, method, URL, status and response time. Every other log line inside that request carries the same id. <code>authorization</code>, <code>cookie</code> and <code>set-cookie</code> are masked; add to the list with <code>LOG_HEADERS_REDACT</code>, or drop headers entirely with <code>LOG_HEADERS_DROP</code>. The access log at <code>info</code> costs about 20 percent of throughput; many teams run <code>LOG_LEVEL=warn</code> and rely on metrics.</p>
+
+<h2>When Redis goes away</h2>
+<p>Redis holds the response cache, the rate-limit counters and the token cache. None of them are worth an outage, so without Redis the gateway keeps routing: every request goes straight to the upstream, limits allow everything, and each token is checked with the verifier. Readiness reports <code>DEGRADED</code> and the pod stays in service.</p>
+<p>Two kinds of failure, both handled:</p>
+<ul>
+<li><strong>Redis is unreachable.</strong> Commands fail at once and requests carry on at normal speed. The client reconnects on its own and caching resumes.</li>
+<li><strong>Redis is connected but stuck.</strong> Each command gives up after <code>REDIS_COMMAND_TIMEOUT_MS</code> (250 ms). One timeout makes the gateway skip Redis for <code>REDIS_BACKOFF_MS</code> (5 s), so only a handful of requests ever wait, then it tries again. In a test with Redis paused for 8 seconds, the first request took 255 ms and the rest 1 to 3 ms.</li>
+</ul>
+<p>If <code>ALERT_WEBHOOK_URL</code> is set, you get an alert on the first request served without Redis, then one every <code>REDIS_ALERT_EVERY</code> requests (the 1,001st, 2,001st, and so on), each with the running count. When Redis answers again you get one recovery alert with the total. Each gateway process counts on its own, in memory, so with four workers across three pods expect up to twelve first alerts in a full outage.</p>
 
 <h2 id="trust-proxy">Trust proxy</h2>
 <p>Sancus learns the client's IP from <code>X-Forwarded-For</code> only when the direct peer is a proxy it trusts. The default, <code>loopback, linklocal, uniquelocal</code>, trusts private addresses, which is where an ingress or a cloud load balancer sits inside your network. A public client cannot forge the header, because its own address is not private.</p>

@@ -9,7 +9,7 @@
 ## 🚀 Features
 
 - Declarative YAML per service, JSON-Schema validated, hot-reloaded on change, `npm run check` to lint
-- Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`
+- Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`, and `.` / `..` path segments refused
 - Pluggable auth via the ForwardAuth contract (Traefik / APISIX / Envoy style) with a shared Redis token cache
 - Optional geo-fencing against a GeoJSON polygon set (off until you ship polygons)
 - Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding window; `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
@@ -88,6 +88,8 @@ apis:
           statusCodes: [200, 404]   # default 200, 301, 404
 ```
 
+On a route that knows the user (auth required, or `resolveUser`), the cache key decides who shares an entry: `PATH_QUERY_USER` keeps one per user, `PATH` and `PATH_QUERY` keep one for everyone. Use a shared key only when every user gets the same response. `npm run check` and startup print a warning for each such route, so a copied key doesn't go unnoticed.
+
 Validate without starting the gateway:
 
 ```bash
@@ -108,7 +110,9 @@ npm run check -- ./cfg   # another directory
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | Which peers may set X-Forwarded-For. The default covers a load balancer or ingress in private address space; list public proxies (e.g. Cloudflare CIDRs) explicitly. `false` is refused while the IP limiter is on |
 | `IP_RATE_LIMIT_ENABLED` | `true` | Global per-IP limiter on/off |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Token cache, rate limits, response cache. Everything fails open without it |
-| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated, `/regex/` allowed |
+| `REDIS_COMMAND_TIMEOUT_MS` / `REDIS_BACKOFF_MS` | `250` / `5000` | A Redis command slower than this counts as a hang; the gateway then skips Redis for the backoff and serves uncached |
+| `REDIS_ALERT_EVERY` | `1000` | While Redis is down, alert on the 1st request served without it and every N after (1st, 1001st, 2001st...), plus one alert on recovery |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated. `/regex/` entries must match the whole origin, e.g. `/https:\/\/([a-z0-9-]+\.)?example\.com/` |
 | `AUTH_URL` | | Base URL of your token-verification service (`VERITAS_URL` accepted) |
 | `AUTH_VERIFY_PATH` / `AUTH_VERIFY_METHOD` | `/v1/verify/token` / `POST` | Endpoint appended to `AUTH_URL` |
 | `AUTH_TOKEN_IN` / `AUTH_TOKEN_FIELD` | `body` / `token` | Send the token as a JSON body field, or as a `header` (default `authorization`) |
@@ -117,6 +121,7 @@ npm run check -- ./cfg   # another directory
 | `AUTH_UPSTREAM_HEADERS` | | Auth-response headers copied onto the upstream request |
 | `AUTH_CLIENT_HEADERS` | | Auth-response headers returned to the client on rejection |
 | `AUTH_FORWARD_HEADER` | `X-AUTHORIZED-FOR-ID` | Header carrying the resolved user id upstream |
+| `STRIP_REQUEST_HEADERS` | | Extra headers deleted from every client request. `AUTH_FORWARD_HEADER` and `AUTH_UPSTREAM_HEADERS` are always deleted, so clients cannot spoof identity |
 | `AUTH_TIMEOUT_MS` / `AUTH_CACHE_TTL` | `5000` / `60` | Auth call timeout, positive-result cache seconds |
 | `AUTH_FAIL_OPEN` / `AUTH_STATUS_ON_ERROR` | `false` / `403` | Behaviour when the auth service is unreachable |
 | `IP_RATE_LIMIT_CAPACITY` / `IP_RATE_LIMIT_REFILL_RATE` | `200` / `5` | Global per-IP bucket size and tokens per second |
@@ -129,9 +134,9 @@ npm run check -- ./cfg   # another directory
 | `KEEP_ALIVE_TIMEOUT_MS` | `125000` | Must exceed your load balancer's idle timeout |
 | `SHUTDOWN_DELAY_MS` | `5000` | After SIGTERM, keep serving (readiness 503, `Connection: close`) this long so load balancers stop routing here |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | Then drain in-flight requests for up to this long before a forced exit |
-| `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie` / | pino level; headers masked or removed from access logs |
+| `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie,x-api-key,proxy-authorization` / | pino level; headers masked or removed from access logs |
 | `ALERT_WEBHOOK_URL` / `ALERT_COOLDOWN_MS` | / `60000` | Slack/Discord-compatible webhook (`DISCORD_WEBHOOK_URL` accepted); per-key dedupe |
-| `ADMIN_TOKEN` | | If set, `/metrics`, `/routes` and `/cache` require `Authorization: Bearer <token>` |
+| `ADMIN_TOKEN` | | Turns on `/metrics`, `/routes` and `DELETE /cache/:service`, which then require `Authorization: Bearer <token>`. Unset, they answer 404 |
 | `GEOFENCE_FILE` | `./in.json` | GeoJSON of banned polygons |
 
 ---
@@ -185,6 +190,7 @@ New Relic is not bundled. If you want it: `npm i newrelic` and start with `node 
 
 Sancus does not implement auth itself. For every route without `AUTH` in `bypass` it calls your verification service using the ForwardAuth contract: the request carries `X-Forwarded-Method`, `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Uri`, `X-Forwarded-For` plus the client headers listed in `AUTH_REQUEST_HEADERS`, and the token either in the JSON body or as a header.
 
+- Any `X-AUTHORIZED-FOR-ID` (or `AUTH_FORWARD_HEADER`) and `AUTH_UPSTREAM_HEADERS` values sent by the client are deleted on arrival, on every route, so they can only come from the gateway.
 - `2xx` containing `AUTH_USER_ID_FIELD` → valid. The id is forwarded as `AUTH_FORWARD_HEADER`; headers listed in `AUTH_UPSTREAM_HEADERS` are copied onto the upstream request; the result is cached in Redis for `AUTH_CACHE_TTL` seconds.
 - Any other status → the auth service's status and body are returned to the client verbatim (plus `AUTH_CLIENT_HEADERS`).
 - Unreachable → `AUTH_STATUS_ON_ERROR`, or anonymous pass-through when `AUTH_FAIL_OPEN=true`.

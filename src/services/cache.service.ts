@@ -43,13 +43,26 @@ class CacheService {
     path: string,
     query?: string,
     userId?: string,
-    vary?: Record<string, string | undefined>
+    vary?: Record<string, string | undefined>,
+    encoding?: string
   ): string {
     let raw = path;
     if (config.key === 'PATH_QUERY' || config.key === 'PATH_QUERY_USER') raw = query ? `${path}?${query}` : path;
     if (config.key === 'PATH_QUERY_USER' && userId) raw = `${raw}::${userId}`;
     if (vary) raw += '|' + Object.entries(vary).map(([k, v]) => `${k.toLowerCase()}=${v ?? ''}`).join('|');
+    if (encoding) raw += `|enc=${encoding}`;
     return `${CacheService.KEY_PREFIX}:${service}:${config.strategy}:${raw}`;
+  }
+
+  /**
+   * Which encoding this client can take, reduced to one of three buckets. It is part of the cache
+   * key, so a client that cannot unzip is never sent a gzipped cached body.
+   */
+  public static encodingBucket(req: Request): 'br' | 'gzip' | 'identity' {
+    const ae = String(req.headers['accept-encoding'] ?? '').toLowerCase();
+    if (/(^|[\s,])br(?![\w-])(?!;q=0(\.0+)?(\s|,|$))/.test(ae)) return 'br';
+    if (/(^|[\s,])(x-)?gzip(?![\w-])(?!;q=0(\.0+)?(\s|,|$))/.test(ae)) return 'gzip';
+    return 'identity';
   }
 
   /** Short digest exposed as X-Cache-Key so operators can correlate without leaking the raw key. */
@@ -149,7 +162,7 @@ class CacheService {
           ? `${scope}, max-age=${config.browserTtl}, stale-while-revalidate=${Math.floor(config.browserTtl * 0.25)}`
           : `${scope}, max-age=${config.browserTtl}`;
     }
-    const vary = [...(config.key === 'PATH_QUERY_USER' ? ['Authorization'] : []), ...(config.varyHeaders ?? [])];
+    const vary = [...(config.key === 'PATH_QUERY_USER' ? ['Authorization'] : []), ...(config.varyHeaders ?? []), 'Accept-Encoding'];
     if (vary.length) headers.Vary = vary.join(', ');
     return headers;
   }

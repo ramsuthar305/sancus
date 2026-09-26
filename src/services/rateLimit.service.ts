@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import type { Request } from 'express';
 import getLogger from '../configs/logger';
 import { rateLimited } from '../configs/metrics';
@@ -75,7 +76,8 @@ class RateLimitService {
   private resolveIdentifier(strategy: RateLimitConfig['key'], req: Request, userId?: string, apiKey?: string): string {
     const ip = `ip:${getClientIp(req)}`;
     switch (strategy) {
-      case 'API_KEY': return apiKey ? `apikey:${apiKey}` : ip;
+      // The key itself never lands in Redis or alerts: a short hash identifies it.
+      case 'API_KEY': return apiKey ? `apikey:${createHash('sha256').update(apiKey).digest('hex').slice(0, 16)}` : ip;
       case 'USER': return userId ? `user:${userId}` : ip;
       case 'USER_OR_IP': return userId ? `user:${userId}` : ip;
       case 'IP_USER': return userId ? `${ip}|user:${userId}` : ip;

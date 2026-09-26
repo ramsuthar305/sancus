@@ -5,8 +5,7 @@ import { lifecycle } from './configs/lifecycle';
 import getLogger from './configs/logger';
 import IPRateLimiter from './middlewares/ipRateLimiter';
 import { metricsMiddleware } from './middlewares/metrics';
-import handleMultipart from './middlewares/multipartHandler';
-import { accessLogger, requestIdMiddleware } from './middlewares/requestContext';
+import { accessLogger, requestIdMiddleware, stripOwnedHeaders } from './middlewares/requestContext';
 import AdminRoute from './routes/admin.route';
 import CommonRequestRoute from './routes/commonRequest.route';
 import GeoFenceRoute from './routes/geoFenceRequest.route';
@@ -28,6 +27,7 @@ const routeRegistry = RouteRegistry.getInstance();
 routeRegistry.initialize(configDir);
 if (process.env.CONFIG_WATCH !== 'false') routeRegistry.watch(configDir);
 
+if (!process.env.ADMIN_TOKEN) logger.warn('ADMIN_TOKEN is not set: /metrics, /routes and DELETE /cache are disabled');
 const app: Express = express();
 const port = Number(process.env.PORT) || 3000;
 const redisService = RedisService.getInstance();
@@ -45,6 +45,7 @@ if (ipLimiterEnabled && trustProxy === false) {
 }
 
 app.use(requestIdMiddleware);
+app.use(stripOwnedHeaders);
 // While draining, ask keep-alive clients to reconnect, so they move to a pod that is staying.
 app.use((_req: Request, res: Response, next: NextFunction) => {
   if (lifecycle.shuttingDown) res.setHeader('Connection', 'close');
@@ -63,7 +64,6 @@ app.use(
     },
   })
 );
-app.use(handleMultipart);
 app.use((req: Request, res: Response, next: NextFunction) => {
   CorsHandler.setHeaders(req, res);
   next();

@@ -49,4 +49,11 @@ describe('RateLimitService.enforce()', () => {
     expect(mockEval.mock.calls[0][2]).toBe('ratelimit:group:search:ip:1.2.3.4:m');
     expect(r.headers).toEqual({});
   });
+
+  it('never puts a raw API key in the Redis key (security 8)', async () => {
+    mockEval.mockResolvedValueOnce([1, 5, 0, 30]);
+    await RateLimitService.getInstance().enforce({ ...base, apiKey: 'sk_live_supersecret', route: { path: '/p', methods: ['GET'], rateLimit: { perMinute: 10, key: 'API_KEY' } } });
+    expect(mockEval.mock.calls[0][2]).not.toContain('supersecret');
+    expect(mockEval.mock.calls[0][2]).toMatch(/apikey:[0-9a-f]{16}:m$/);
+  });
 });

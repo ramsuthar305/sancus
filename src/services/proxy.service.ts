@@ -8,6 +8,7 @@ import type { APIRoute, CacheConfig, HeaderRules, Service } from '../types/api';
 import type { AuthResponse } from '../types/auth';
 import ResponseEnum from '../types/responseEnums';
 import AlertService from '../utils/alerts';
+import { AUTH_FORWARD_HEADER, GATEWAY_OWNED_HEADERS } from '../clients/authClient';
 import FileUtil from '../utils/fileUtil';
 import SancusResponse from '../utils/responseUtil';
 import CacheService from './cache.service';
@@ -42,7 +43,6 @@ const logger = getLogger();
 const alertService = AlertService.getInstance();
 const cacheService = CacheService.getInstance();
 
-const AUTH_FORWARD_HEADER = process.env.AUTH_FORWARD_HEADER || 'X-AUTHORIZED-FOR-ID';
 const DEFAULT_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS) || 60_000;
 const UNHEALTHY_TTL_MS = Number(process.env.UPSTREAM_UNHEALTHY_TTL_MS) || 30_000;
 const IDEMPOTENT = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -171,17 +171,23 @@ class ProxyService {
 
   private upstreamHeaders(req: Request, ctx: ProxyContext, target: Target): http.OutgoingHttpHeaders {
     const headers: http.OutgoingHttpHeaders = {};
-    for (const [k, v] of Object.entries(req.headers)) if (!HOP_BY_HOP.has(k) && v !== undefined) headers[k] = v;
+    // Gateway-owned identity headers are never copied from the client (also stripped on arrival).
+    for (const [k, v] of Object.entries(req.headers)) if (!HOP_BY_HOP.has(k) && !GATEWAY_OWNED_HEADERS.has(k) && v !== undefined) headers[k] = v;
     headers.host = target.hostHeader;
 
     const remote = req.socket?.remoteAddress ?? '';
     const xff = req.headers['x-forwarded-for'];
     headers['x-forwarded-for'] = xff ? `${xff}, ${remote}` : remote;
-    headers['x-forwarded-proto'] = (req.headers['x-forwarded-proto'] as string) || ((req.socket as any)?.encrypted ? 'https' : 'http');
-    headers['x-forwarded-host'] = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+    // Forwarded proto/host: taken from X-Forwarded-* only when the peer is a trusted proxy
+    // (TRUST_PROXY); otherwise from the connection and Host header. A client cannot choose them.
+    const trust = req.app?.get('trust proxy fn') as ((addr: string, i: number) => boolean) | undefined;
+    const peerTrusted = !!trust && trust(remote, 0);
+    const fwdHost = peerTrusted ? (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0].trim() : undefined;
+    headers['x-forwarded-proto'] = req.protocol || ((req.socket as any)?.encrypted ? 'https' : 'http');
+    headers['x-forwarded-host'] = fwdHost || req.headers.host || '';
     headers['x-request-id'] = ctx.correlationalId;
     headers['correlation-id'] = ctx.correlationalId; // legacy alias
-    if (ctx.tokenDetails) headers[AUTH_FORWARD_HEADER.toLowerCase()] = String(ctx.tokenDetails.id);
+    if (ctx.tokenDetails) headers[AUTH_FORWARD_HEADER] = String(ctx.tokenDetails.id);
     Object.entries(ctx.authUpstreamHeaders ?? {}).forEach(([k, v]) => (headers[k.toLowerCase()] = v));
     this.applyHeaderRules(headers, ctx.service.headers);
     this.applyHeaderRules(headers, ctx.route.headers);

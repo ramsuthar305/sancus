@@ -7,10 +7,12 @@ import PolicyRegistry from '../services/policyRegistry';
 import ProxyService, { ProxyContext } from '../services/proxy.service';
 import RateLimitService from '../services/rateLimit.service';
 import RouteRegistry from '../services/routeRegistry';
+import RedisService from '../services/redis.service';
 import { APIRoute, CacheConfig, HttpMethod } from '../types/api';
 import { AuthResponse } from '../types/auth';
 import ResponseEnum from '../types/responseEnums';
 import AlertService from '../utils/alerts';
+import { parseMultipart } from '../middlewares/multipartHandler';
 import CorsHandler from '../utils/corsUtil';
 import GeoUtils from '../utils/geoFenceUtil';
 import SancusResponse from '../utils/responseUtil';
@@ -118,6 +120,7 @@ class CommonRequestController {
         CorsHandler.setHeaders(req, res);
         return res.status(200).send();
       }
+      RedisService.getInstance().noteRequest(); // counts requests served without Redis, for alerts
 
       // --- match ---
       const serviceName = UrlUtils.extractServiceName(originalUrl);
@@ -130,6 +133,10 @@ class CommonRequestController {
       const basePath = UrlUtils.extractPathWithoutQuery(originalUrl);
       if (!baseUrl || !basePath) {
         new SancusResponse(ResponseEnum.NOT_FOUND, {}, res);
+        return;
+      }
+      if (UrlUtils.hasDotSegment(basePath)) {
+        new SancusResponse(ResponseEnum.BAD_REQUEST, {}, res);
         return;
       }
       const route = routeRegistry.findRoute(serviceName, basePath, method as HttpMethod);
@@ -159,7 +166,7 @@ class CommonRequestController {
 
       // Anonymous routes: answer from cache before auth/geo/rate-limit work
       if (cacheable && cacheConfig && route.bypass?.includes('AUTH') && cacheConfig.key !== 'PATH_QUERY_USER') {
-        const earlyKey = cacheService.buildKey(cacheConfig, serviceName, basePath, queryString, undefined, vary);
+        const earlyKey = cacheService.buildKey(cacheConfig, serviceName, basePath, queryString, undefined, vary, CacheService.encodingBucket(req));
         const cached = await cacheService.get(earlyKey, cacheConfig);
         if (cached && !cached.stale) return this.sendCached(req, res, serviceName, earlyKey, cached.data, cacheConfig, 'HIT');
       }
@@ -184,7 +191,7 @@ class CommonRequestController {
       // --- rate-limit ∥ cache lookup ---
       const apiKeyRaw = req.headers['x-api-key'];
       const apiKey = Array.isArray(apiKeyRaw) ? apiKeyRaw[0] : apiKeyRaw;
-      const cacheKey = cacheable && cacheConfig ? cacheService.buildKey(cacheConfig, serviceName, basePath, queryString, userId, vary) : undefined;
+      const cacheKey = cacheable && cacheConfig ? cacheService.buildKey(cacheConfig, serviceName, basePath, queryString, userId, vary, CacheService.encodingBucket(req)) : undefined;
 
       const [rateLimit, cached] = await Promise.all([
         rateLimitService.enforce({ serviceName, route, method: method as HttpMethod, req, userId, apiKey }),
@@ -207,6 +214,10 @@ class CommonRequestController {
         this.sendCached(req, res, serviceName, cacheKey, cached.data, cacheConfig, 'STALE');
       }
 
+      // --- body: multipart is parsed only now, after every check passed ---
+      const uploadedFiles = await parseMultipart(req, res);
+      if (uploadedFiles === null) return; // 400 already sent
+
       // --- proxy ---
       const ctx: ProxyContext = {
         correlationalId: (req as any).id as string,
@@ -218,7 +229,7 @@ class CommonRequestController {
         destination: '',
         tokenDetails: identity,
         authUpstreamHeaders: auth.upstreamHeaders,
-        uploadedFiles: (req as any).uploadedFiles,
+        uploadedFiles,
         shouldCacheResponse: !!cacheKey && !!cacheConfig && method === 'GET',
         cacheKey,
         cacheConfig,

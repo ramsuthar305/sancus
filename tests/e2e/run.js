@@ -17,12 +17,12 @@ const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  -- ${detail}`}`); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function req(method, url, { headers = {}, body, raw = false } = {}) {
+function req(method, url, { headers = {}, body, raw = false, rawPath } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const t0 = Date.now();
     let firstByteAt = 0;
-    const r = http.request({ host: u.hostname, port: u.port, path: u.pathname + u.search, method, headers }, (res) => {
+    const r = http.request({ host: u.hostname, port: u.port, path: rawPath ?? u.pathname + u.search, method, headers }, (res) => {
       const chunks = [];
       res.on('data', (c) => { if (!firstByteAt) firstByteAt = Date.now(); chunks.push(c); });
       res.on('end', () => {
@@ -146,6 +146,8 @@ async function flushRedis() {
   fs.copyFileSync(path.join(ROOT, 'examples', 'geofence', 'india-states.json'), path.join(tmp, 'in.json'));
   fs.mkdirSync(path.join(tmp, 'bad'));
   fs.writeFileSync(path.join(tmp, 'bad', 'x.yml'), 'service: { name: bad }\napis: []\n'); // no host/nodes
+  fs.mkdirSync(path.join(tmp, 'shared'));
+  fs.writeFileSync(path.join(tmp, 'shared', 's.yml'), 'service: { name: s, nodes: [http://x] }\napis: [{ name: a, routes: [{ path: /me, methods: [GET], cache: { strategy: LRU, ttl: 60, key: PATH } }] }]\n');
 
   await flushRedis();
   const procs = [];
@@ -158,7 +160,7 @@ async function flushRedis() {
     IP_RATE_LIMIT_CAPACITY: '5', IP_RATE_LIMIT_REFILL_RATE: '1', IP_BLOCK_THRESHOLD: '3', IP_BLOCK_WINDOW_MS: '60000', IP_BLOCK_DURATION_MS: '60000',
   };
   const gw = start('node', [ENTRY], { ...baseEnv, PORT: '3100', ADMIN_TOKEN: 'secret', CONFIG_WATCH: 'true' }, 'gw1'); procs.push(gw);
-  const gw2 = start('node', [ENTRY], { ...baseEnv, PORT: '3101', CONFIG_WATCH: 'false', GEOFENCE_FILE: path.join(ROOT, 'in.json'), REDIS_URL: 'redis://127.0.0.1:1', AUTH_URL: 'http://127.0.0.1:8009', AUTH_FAIL_OPEN: 'true' }, 'gw2'); procs.push(gw2);
+  const gw2 = start('node', [ENTRY], { ...baseEnv, PORT: '3101', CONFIG_WATCH: 'false', TRUST_PROXY: '10.0.0.0/8', GEOFENCE_FILE: path.join(ROOT, 'in.json'), REDIS_URL: 'redis://127.0.0.1:1', AUTH_URL: 'http://127.0.0.1:8009', AUTH_FAIL_OPEN: 'true' }, 'gw2'); procs.push(gw2);
   const cleanup = () => procs.forEach((p) => { try { p.kill('SIGKILL'); } catch { /* gone */ } });
   process.on('exit', cleanup);
 
@@ -171,6 +173,8 @@ async function flushRedis() {
     check('check: valid dir exits 0 and lists services', /OK\s+demo\.yml/.test(out));
     let bad = null; try { execFileSync('node', [CHECK, path.join(tmp, 'bad')], { stdio: 'pipe' }); } catch (e) { bad = e; }
     check('check: invalid config exits 1 with an error', bad && bad.status === 1 && /ERROR/.test(String(bad.stderr)), bad && String(bad.stderr));
+    const sharedOut = execFileSync('node', [CHECK, path.join(tmp, 'shared')]).toString();
+    check('security 1: shared cache key on a login route loads, with a warning naming the route', /^OK/m.test(sharedOut) && /WARN .*\/me.*PATH_QUERY_USER/.test(sharedOut), sharedOut);
 
     // ---- admin ----
     let r = await get(`${GW}/health/ready`);
@@ -181,6 +185,9 @@ async function flushRedis() {
     check('metrics: Prometheus text with sancus_ metrics', r.status === 200 && /sancus_http_requests_total/.test(r.text) && /text\/plain/.test(r.headers['content-type']));
     r = await get(`${GW}/routes`, { Authorization: 'Bearer secret' });
     check('routes: lists services and policies', r.status === 200 && r.json.services.some((s) => s.name === 'demo') && r.json.policies.includes('require-header') && r.json.policies.includes('ip-restriction'));
+    r = await get(`${GW2}/routes`);
+    const purge = await req('DELETE', `${GW2}/cache/demo`);
+    check('security 4: admin endpoints are off when ADMIN_TOKEN is unset', r.status === 404 && purge.status === 404, `${r.status} ${purge.status}`);
     r = await get(`${GW2}/health/ready`);
     check('ready (degraded): 200 DEGRADED with redis down, pod stays in service', r.status === 200 && r.json.status === 'DEGRADED' && r.json.redis === 'down', r.text);
 
@@ -202,6 +209,15 @@ async function flushRedis() {
     r = await get(`${GW}/api/demo/v1/echo`, { 'x-secret': 'hide-me' });
     check('headers: remove strips x-secret', r.json.headers['x-secret'] === undefined);
     check('headers: X-Forwarded-For/Host set upstream', !!r.json.headers['x-forwarded-for'] && !!r.json.headers['x-forwarded-host']);
+    r = await get(`${GW2}/api/demo/v1/echo`, { 'X-Forwarded-Host': 'evil.example', 'X-Forwarded-Proto': 'https' });
+    check('security 2: forwarded host/proto from an untrusted client are replaced', r.status === 200 && r.json.headers['x-forwarded-host'] === '127.0.0.1:3101' && r.json.headers['x-forwarded-proto'] === 'http', JSON.stringify({ h: r.json.headers['x-forwarded-host'], p: r.json.headers['x-forwarded-proto'] }));
+    r = await get(`${GW}/api/demo/v1/echo`, { 'X-Forwarded-Host': 'api.example.test' });
+    check('forwarded host from a trusted proxy is kept', r.json.headers['x-forwarded-host'] === 'api.example.test', r.json.headers['x-forwarded-host']);
+    for (const p of ['/api/demo/v1/items/..', '/api/demo/v1/items/.', '/api/demo/v1/items/%2e%2e', '/api/demo/v1/items/%2E.']) {
+      // raw path: new URL() would resolve the dots before the request is sent
+      r = await req('GET', GW, { rawPath: p });
+      check(`security 3: dot segment rejected (${p.split('/').pop()})`, r.status === 400 && r.json && r.json.response_code === 'SE0400', `${r.status}`);
+    }
     r = await get(`${GW}/api/demo/v1/echo/42`);
     check('routing: typed int param matches', r.status === 200);
     r = await get(`${GW}/api/demo/v1/echo/abc`);
@@ -238,6 +254,13 @@ async function flushRedis() {
     check('resolveUser: anonymous passes', r.status === 200 && r.json.headers['x-authorized-for-id'] === undefined);
     r = await get(`${GW}/api/demo/v1/optional`, { Authorization: 'Bearer other' });
     check('resolveUser: identity resolved when token present', r.status === 200 && r.json.headers['x-authorized-for-id'] === '8');
+    // identity headers are gateway-owned: a client must never be able to set them
+    r = await get(`${GW}/api/demo/v1/echo`, { 'X-AUTHORIZED-FOR-ID': '1', 'X-User-Role': 'admin' });
+    check('identity: spoofed user id and role stripped on a bypass-AUTH route', r.status === 200 && r.json.headers['x-authorized-for-id'] === undefined && r.json.headers['x-user-role'] === undefined, JSON.stringify({ id: r.json.headers['x-authorized-for-id'], role: r.json.headers['x-user-role'] }));
+    r = await get(`${GW}/api/demo/v1/optional`, { 'x-authorized-for-id': '1' });
+    check('identity: spoofed user id stripped on an anonymous resolveUser request', r.status === 200 && r.json.headers['x-authorized-for-id'] === undefined, String(r.json.headers['x-authorized-for-id']));
+    r = await get(`${GW}/api/demo/v1/private`, { Authorization: 'Bearer other', 'X-AUTHORIZED-FOR-ID': '1', 'X-User-Role': 'admin' });
+    check('identity: verified values win over client-sent ones', r.json.headers['x-authorized-for-id'] === '8' && r.json.headers['x-user-role'] === 'user', JSON.stringify({ id: r.json.headers['x-authorized-for-id'], role: r.json.headers['x-user-role'] }));
     r = await get(`${GW2}/api/demo/v1/private`, { Authorization: 'Bearer good' });
     check('auth fail-open (degraded): auth down + AUTH_FAIL_OPEN -> anonymous 200', r.status === 200 && r.json.headers['x-authorized-for-id'] === undefined, `${r.status}`);
 
@@ -307,10 +330,15 @@ async function flushRedis() {
     await get(`${GW}/api/demo/v1/cookie`); await sleep(100);
     r = await get(`${GW}/api/demo/v1/cookie`);
     check('cache: Set-Cookie -> BYPASS', r.headers['x-cache-status'] === 'BYPASS');
-    r = await get(`${GW}/api/demo/v1/gz`); await sleep(150);
-    r = await get(`${GW}/api/demo/v1/gz`);
+    const gzH = { 'Accept-Encoding': 'gzip' };
+    r = await get(`${GW}/api/demo/v1/gz`, gzH); await sleep(150);
+    r = await get(`${GW}/api/demo/v1/gz`, gzH);
     let gzOk = false; try { gzOk = JSON.parse(zlib.gunzipSync(r.body).toString()).gz === true; } catch { /* corrupt */ }
     check('cache: gzip body survives a HIT byte-for-byte', r.headers['x-cache-status'] === 'HIT' && r.headers['content-encoding'] === 'gzip' && gzOk);
+    r = await get(`${GW}/api/demo/v1/gz`); await sleep(150);
+    r = await get(`${GW}/api/demo/v1/gz`);
+    let plainOk = false; try { plainOk = JSON.parse(r.text).gz === true; } catch { /* got gzip */ }
+    check('security 15: a client without gzip never gets a gzipped cached body', r.headers['content-encoding'] === undefined && plainOk && r.headers['x-cache-status'] === 'HIT', `${r.headers['content-encoding']} ${r.headers['x-cache-status']}`);
     await get(`${GW}/api/demo/v1/vary`, { 'Accept-Language': 'en' }); await sleep(100);
     r = await get(`${GW}/api/demo/v1/vary`, { 'Accept-Language': 'fr' });
     const fr = r.headers['x-cache-status'];
@@ -349,7 +377,16 @@ async function flushRedis() {
       Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.png"\r\nContent-Type: image/png\r\n\r\n`), png, Buffer.from('\r\n'),
       Buffer.from(`--${boundary}--\r\n`),
     ]);
+    const uploads = path.join(path.dirname(ENTRY), '..', 'uploads');
+    const countUploads = () => { try { return fs.readdirSync(uploads).length; } catch { return 0; } };
+    const before5 = countUploads();
+    const r404 = await req('POST', `${GW}/api/nope/x`, { headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': mp.length }, body: mp });
+    const r401 = await req('POST', `${GW}/api/demo/v1/private`, { headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': mp.length }, body: mp });
+    await sleep(200);
+    check('security 5: rejected uploads leave nothing on disk', r404.status === 404 && r401.status === 401 && countUploads() === before5, `${r404.status} ${r401.status} files +${countUploads() - before5}`);
     r = await req('POST', `${GW}/api/demo/v1/multipart`, { headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': mp.length }, body: mp });
+    await sleep(200);
+    check('security 5: accepted uploads are removed after forwarding', countUploads() === before5, `files +${countUploads() - before5}`);
     check('multipart: file forwarded upstream', r.status === 200 && r.json.files === 1 && r.json.ct === 'multipart/form-data' && r.json.bytes > 300, r.text);
     const bad2 = Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="x.exe"\r\nContent-Type: application/x-msdownload\r\n\r\nMZ\r\n--${boundary}--\r\n`)]);
     r = await req('POST', `${GW}/api/demo/v1/multipart`, { headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': bad2.length }, body: bad2 });

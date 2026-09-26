@@ -65,8 +65,11 @@ res.json(rows);   // forgot language, forgot ETag</code></pre></div><div><div cl
 <tr><td><code>PATH_QUERY_USER</code></td><td>path, query and user id. Responses are marked <code>private</code> and <code>Vary: Authorization</code>.</td></tr>
 </table>
 
+<h2>Routes that know the user</h2>
+<p>If a route requires auth, or uses <code>resolveUser</code>, its answer can differ per user. The cache key decides who shares an entry. <code>key: PATH_QUERY_USER</code> keeps one entry per user, for things like a profile or orders. <code>key: PATH</code> or <code>PATH_QUERY</code> keeps one entry for everyone, for things every user sees the same way, like a list of countries. Pick the shared keys only for that second kind: on a personal route they hand one user's answer to the next. <code>npm run check</code> and startup print a warning for every login route with a shared key, so a key copied from a public route gets noticed.</p>
+
 <h2>What gets stored</h2>
-<p>Only GET and HEAD. Only the statuses in <code>statusCodes</code>. Never a response with <code>Cache-Control: no-store</code> or <code>private</code>, and never one with <code>Set-Cookie</code>. A request with <code>Cache-Control: no-cache</code> skips the lookup. Bodies are stored as bytes, so compressed responses come back intact.</p>
+<p>Only GET and HEAD. Only the statuses in <code>statusCodes</code>. Never a response with <code>Cache-Control: no-store</code> or <code>private</code>, and never one with <code>Set-Cookie</code>. A request with <code>Cache-Control: no-cache</code> skips the lookup. Bodies are stored as bytes, so compressed responses come back intact. The cache key includes the encoding a client accepts (<code>br</code>, <code>gzip</code> or none), so a client that cannot unzip never receives a zipped body.</p>
 
 <h2>Headers</h2>
 <table>

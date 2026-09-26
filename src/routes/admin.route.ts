@@ -8,7 +8,7 @@ import RouteRegistry from '../services/routeRegistry';
 
 /**
  * Operational endpoints. /health and /health/ready are always open (probes need them);
- * the rest require `Authorization: Bearer $ADMIN_TOKEN` when ADMIN_TOKEN is set.
+ * the rest exist only when ADMIN_TOKEN is set, and require `Authorization: Bearer $ADMIN_TOKEN`.
  */
 const router = Router();
 const routeRegistry = RouteRegistry.getInstance();
@@ -30,18 +30,22 @@ router.get('/health/ready', async (_req, res) => {
   return res.json({ status: redis === 'up' ? 'UP' : 'DEGRADED', redis, configLoadedAt: routeRegistry.loadedAt });
 });
 
+/** Admin endpoints exist only when ADMIN_TOKEN is set; without it they answer 404 like any unknown path. */
 const adminAuth = (req: Request, res: Response, next: NextFunction) => {
   const token = process.env.ADMIN_TOKEN;
-  if (token && req.headers.authorization !== `Bearer ${token}`) {
+  if (!token) return res.status(404).json({ message: 'Resource not found', response_code: 'SE0404' });
+  if (req.headers.authorization !== `Bearer ${token}`) {
     return res.status(401).json({ message: 'Unauthorized', response_code: 'SE0401' });
   }
   return next();
 };
+const safe = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
+  fn(req, res).catch(next);
 
-router.get('/metrics', adminAuth, async (_req, res) => {
+router.get('/metrics', adminAuth, safe(async (_req, res) => {
   res.set('Content-Type', metricsRegistry.contentType);
   res.send(await metricsRegistry.metrics());
-});
+}));
 
 router.get('/routes', adminAuth, (_req, res) => {
   res.json({
@@ -63,10 +67,10 @@ router.get('/routes', adminAuth, (_req, res) => {
   });
 });
 
-router.delete('/cache/:service', adminAuth, async (req, res) => {
+router.delete('/cache/:service', adminAuth, safe(async (req, res) => {
   if (!routeRegistry.getService(req.params.service)) return res.status(404).json({ message: 'Unknown service', response_code: 'SE0404' });
   const purged = await CacheService.getInstance().purgeService(req.params.service);
   return res.json({ service: req.params.service, purged });
-});
+}));
 
 export default router;

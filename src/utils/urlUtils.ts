@@ -1,4 +1,13 @@
 class UrlUtils {
+  /** True when any path segment is "." or ".." (also percent-encoded), which upstreams may resolve to another route. */
+  public static hasDotSegment(path: string): boolean {
+    return path.split('/').some((seg) => {
+      let s = seg;
+      try { s = decodeURIComponent(seg); } catch { /* malformed escapes: judge the raw text */ }
+      return s === '.' || s === '..';
+    });
+  }
+
   public static extractServiceName(path: string): string | null {
     const serviceNameRegex = /\/api\/([^/]+)/;
     const match = path.match(serviceNameRegex);
