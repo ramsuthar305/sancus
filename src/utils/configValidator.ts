@@ -3,7 +3,7 @@ import * as yaml from 'js-yaml';
 import * as path from 'path';
 import { Logger } from 'winston';
 import getLogger from '../configs/logger';
-import { APIConfig, Service } from '../types/api';
+import { APIConfig, RateLimitConfig, Service } from '../types/api';
 import { forEach, some } from 'lodash';
 
 // This util is to check if all the API configuration files are valid.
@@ -86,9 +86,30 @@ class APIConfigValidator {
         if (route.authorization && !Array.isArray(route.authorization)) {
           throw new Error('API route authorization must be an array');
         }
+
+        if (route.rateLimit) {
+          this.validateRateLimit(route.rateLimit);
+        }
       });
     });
   }
+  private validateRateLimit(rateLimit: RateLimitConfig): void {
+    const { perMinute, perDay } = rateLimit;
+    if (
+      (perMinute !== undefined && (typeof perMinute !== 'number' || perMinute < 1)) ||
+      (perDay !== undefined && (typeof perDay !== 'number' || perDay < 1))
+    ) {
+      throw new Error('Rate limit values must be positive numbers');
+    }
+
+    const allowedKeys = ['API_KEY', 'USER', 'IP', 'USER_OR_IP'];
+    if (rateLimit.key && !allowedKeys.includes(rateLimit.key)) {
+      throw new Error(
+        `Invalid rate limit key strategy "${rateLimit.key}". Allowed: ${allowedKeys.join(', ')}`
+      );
+    }
+  }
+
 
   private isValidHTTPMethod(method: string): boolean {
     const validMethods = [

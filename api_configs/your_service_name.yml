@@ -1,23 +1,29 @@
 service:
-  name: your_service_name
-  host: YOUR_SERVICE_HOST
-  port: 80 # The exposed service port
+  name: your_service_name   # becomes the URL prefix: /api/your_service_name/...
+  host: YOUR_SERVICE_HOST   # env var holding the upstream base URL, e.g. http://my-service
+  port: 80
 
 apis:
-  - name: Example resource Management
-    description: Some description
+  - name: Example resource
+    description: Authenticated + geo-fenced by default
     routes:
       - path: /v1/example/api
         methods: [POST]
-      - path: /v1/example/api
-        methods: [GET]
-        bypass: [AUTH, GEO_FENCE]
+      - path: /v1/example/api/{id:int}
+        methods: [GET, PATCH]
 
-  - name: Example resource Management 2
-    description: Some description
+  - name: Public resource
+    description: Bypass auth/geo-fence, add rate limiting and caching
     routes:
-      - path: /v1/example/api
-        methods: [POST]
-      - path: /v1/example/api
+      - path: /v1/public/search
         methods: [GET]
         bypass: [AUTH, GEO_FENCE]
+        rateLimit:
+          perMinute: 120
+          perDay: 5000
+          key: USER_OR_IP      # IP | USER | API_KEY | USER_OR_IP
+        cache:
+          strategy: LRU        # LRU | LFU | SWR
+          ttl: 300             # seconds in Redis
+          key: PATH_QUERY      # PATH | PATH_QUERY | PATH_QUERY_USER
+          browserTtl: 60       # optional: emits Cache-Control/ETag headers

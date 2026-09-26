@@ -1,13 +1,32 @@
-import axios, { AxiosError, AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosInstance, AxiosResponse } from 'axios';
+import http from 'http';
+import https from 'https';
 import ClientResponseStatus from '../types/requestStatus';
 import { VeritasResponse } from '../types/veritas';
 
+const veritasHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 64 });
+const veritasHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 64 });
+
 class VeritasServiceClient {
+  private static instance: VeritasServiceClient;
   private readonly apiUrl: string;
+  private readonly client: AxiosInstance;
 
   constructor() {
-    // Pick the URL from an environment variable or provide a default
     this.apiUrl = process.env['VERITAS_URL']||"";
+    this.client = axios.create({
+      baseURL: this.apiUrl,
+      httpAgent: veritasHttpAgent,
+      httpsAgent: veritasHttpsAgent,
+      timeout: 5000,
+    });
+  }
+
+  static getInstance(): VeritasServiceClient {
+    if (!VeritasServiceClient.instance) {
+      VeritasServiceClient.instance = new VeritasServiceClient();
+    }
+    return VeritasServiceClient.instance;
   }
 
   // Function to make a request to the Veritas service
@@ -15,9 +34,8 @@ class VeritasServiceClient {
     token: string
   ): Promise<VeritasResponse | ClientResponseStatus> {
     try {
-      // Update url as per your auth apis
-      const response: AxiosResponse<VeritasResponse> = await axios.post(
-        `${this.apiUrl}/v1/verify/token`,
+      const response: AxiosResponse<VeritasResponse> = await this.client.post(
+        '/v1/verify/token',
         { token }
       );
 
