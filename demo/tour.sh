@@ -78,12 +78,6 @@ step "Timeouts become 504, not hung clients" "The catalog service has timeout: 1
 show "$GW/api/catalog/slow"
 pause
 
-step "Circuit breaker" "/flaky always 500s. Once 3+ calls happened in the last 10s and more than 25% failed, the breaker opens: 503 + Retry-After without touching the upstream, for 15s."
-for i in 1 2 3 4 5 6 7 8; do c=$(code "$GW/api/catalog/flaky"); printf '   /flaky -> %s\n' "$c"; [ "$c" = 503 ] && break; done
-show "$GW/api/catalog/flaky"
-note "SE0503 came from the gateway; the catalog log shows no more hits. The successful calls from the previous steps sit in the same rolling window, which is why it can take a call or two more than three. It half-opens after resetTimeout."
-pause
-
 step "Server-Sent Events stream straight through" "5 events, 400ms apart. Note the timestamps: nothing is buffered."
 curl -sN "$GW/api/catalog/events" | while IFS= read -r line; do [ -n "$line" ] && printf '   %s  %s\n' "$(date +%T.%N | cut -c1-12)" "$line"; done
 pause
@@ -91,6 +85,12 @@ pause
 step "Policies: built-in ip-restriction and your own module" "/admin/stats allows private IPs only. POST /orders requires X-Idempotency-Key via demo/policies/require-header.js."
 show -X POST "$GW/api/catalog/orders" -H 'Content-Type: application/json' -d '{"item":"mug"}'
 show -X POST "$GW/api/catalog/orders" -H 'Content-Type: application/json' -H 'X-Idempotency-Key: abc-123' -d '{"item":"mug"}'
+pause
+
+step "Circuit breaker" "/flaky always 500s. Once 3+ calls happened in the last 10s and more than 25% failed, the breaker opens: 503 + Retry-After without touching the upstream, for 15s."
+for i in 1 2 3 4 5 6 7 8; do c=$(code "$GW/api/catalog/flaky"); printf '   /flaky -> %s\n' "$c"; [ "$c" = 503 ] && break; done
+show "$GW/api/catalog/flaky"
+note "SE0503 came from the gateway; the catalog log shows no more hits. The successful calls from the previous steps sit in the same rolling window, which is why it can take a call or two more than three. It half-opens after resetTimeout."
 pause
 
 step "Correct status codes" "Unknown path -> 404. Known path, wrong method -> 405 with Allow."
