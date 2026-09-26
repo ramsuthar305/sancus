@@ -27,15 +27,14 @@ jest.mock('../utils/geoFenceUtil', () => ({
   },
 }));
 
-// Mock http-proxy — capture the proxy.web call
-const mockProxyWeb = jest.fn();
-const mockProxyOn = jest.fn();
-jest.mock('http-proxy', () => ({
+// Mock the proxy service — capture the proxy() call and compute destination like the real one
+const mockProxyWeb = jest.fn((req: any, res: any, ctx: any) => { ctx.destination = process.env.EXAMPLE_URL + (ctx.service.port && ctx.service.port !== 80 ? `:${ctx.service.port}` : ''); });
+jest.mock('../services/proxy.service', () => ({
   __esModule: true,
   default: {
-    createProxyServer: () => ({
-      web: mockProxyWeb,
-      on: mockProxyOn,
+    getInstance: () => ({
+      proxy: mockProxyWeb,
+      rewritePath: (_s: any, p: string) => p,
     }),
   },
 }));
@@ -241,26 +240,18 @@ describe('CommonRequestController.pipeline()', () => {
     expect(mockReq.url).toBe('/api/users/');
   });
 
-  it('should call proxy.web() with correct per-request options', async () => {
+  it('should hand the request to the proxy service once with a full context', async () => {
     mockReq = buildReq();
     await controller.pipeline(mockReq, mockRes, mockNext);
 
     expect(mockProxyWeb).toHaveBeenCalledTimes(1);
-    const [req, res, options] = mockProxyWeb.mock.calls[0];
-    expect(options.target).toBe('http://example-backend');
-    expect(options.selfHandleResponse).toBe(false);
-    expect(options.agent).toBeDefined();
-  });
-
-  it('should use httpsAgent when destination is https', async () => {
-    process.env.EXAMPLE_URL = 'https://example-backend';
-    mockReq = buildReq();
-    await controller.pipeline(mockReq, mockRes, mockNext);
-
-    const [, , options] = mockProxyWeb.mock.calls[0];
-    expect(options.target).toBe('https://example-backend');
-    // The agent should be an https.Agent (has `maxCachedSessions`)
-    expect(options.agent).toBeDefined();
+    const [req, res, ctx] = mockProxyWeb.mock.calls[0];
+    expect(req).toBe(mockReq);
+    expect(res).toBe(mockRes);
+    expect(ctx.service.name).toBe('example');
+    expect(ctx.route.path).toBe('/api/users/');
+    expect(ctx.attempt).toBe(0);
+    expect(ctx.swrStale).toBe(false);
   });
 
   it('should include port in destination when not 80', async () => {

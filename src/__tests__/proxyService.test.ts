@@ -1,7 +1,6 @@
 jest.mock('../configs/logger', () => () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }));
 jest.mock('../utils/alerts', () => ({ __esModule: true, default: { getInstance: () => ({ alert: jest.fn(), enabled: false }) } }));
 jest.mock('../services/redis.service', () => ({ __esModule: true, default: { getInstance: () => ({ getClient: () => null }) } }));
-jest.mock('http-proxy', () => ({ __esModule: true, default: { createProxyServer: () => ({ web: jest.fn(), on: jest.fn() }) } }));
 
 import ProxyService from '../services/proxy.service';
 

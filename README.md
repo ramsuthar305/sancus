@@ -247,7 +247,7 @@ kubectl apply -k k8s/
 
 ## 📈 Benchmarks
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md): ~15k req/s per process, sub-millisecond median overhead at 2k req/s, and a same-conditions comparison against Kong, APISIX, Traefik and KrakenD with the harness to reproduce it.
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md): ~21k req/s per process, ~0.3 ms median overhead at 2k req/s, and a same-conditions comparison against Kong, APISIX, Traefik and KrakenD with the harness to reproduce it.
 
 ---
 

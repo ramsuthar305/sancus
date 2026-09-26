@@ -24,54 +24,77 @@ Single gateway process unless stated. "As shipped" is the default config: info-l
 
 | Scenario | req/s | p50 ms | p90 ms | p99 ms | CPU % | RSS MB |
 |---|---|---|---|---|---|---|
-| direct upstream (baseline) | 2,20,211 | 0.388 | 0.728 | 1.26 | - | - |
-| proxy, as shipped (info log + IP limiter) | 12,729 | 7.44 | 9.72 | 11.72 | 116 | 280 |
-| proxy, tuned | 14,950 | 6.38 | 8.84 | 10.97 | 125 | 256 |
-| proxy + route rate limit | 13,982 | 6.83 | 9.29 | 11.1 | 124 | 276 |
-| proxy + auth (cached token) | 14,014 | 6.71 | 9.32 | 10.55 | 121 | 291 |
-| cache HIT | 32,878 | 2.73 | 3.84 | 6.69 | 134 | 267 |
-| auth + rate limit + cache HIT | 22,248 | 4.28 | 6.86 | 60.42 | 128 | 274 |
-| proxy, tuned, 4 workers | 23,766 | 3.74 | 6.48 | 10.45 | 456 | 997 |
-| auth + rate limit + cache HIT, 4 workers | 35,220 | 2.45 | 4.57 | 8.08 | 445 | 1023 |
+| direct upstream (baseline) | 2,19,058 | 0.394 | 0.703 | 1.29 | – | – |
+| proxy, as shipped (info log + IP limiter) | 16,574 | 5.66 | 7.75 | 8.81 | 121 | 283 |
+| proxy, tuned | 21,398 | 4.45 | 6.49 | 7.98 | 125 | 269 |
+| proxy + route rate limit | 18,313 | 5.13 | 7.46 | 8.7 | 125 | 278 |
+| proxy + auth (cached token) | 18,722 | 5 | 7.33 | 8.68 | 126 | 266 |
+| cache HIT | 32,376 | 2.89 | 4.2 | 7.38 | 133 | 274 |
+| auth + rate limit + cache HIT | 21,494 | 4.36 | 6.52 | 8.18 | 131 | 268 |
+| proxy, tuned, 4 workers | 30,814 | 2.9 | 5.28 | 9.56 | 439 | 996 |
+| auth + rate limit + cache HIT, 4 workers | 37,130 | 2.44 | 4.2 | 7.56 | 441 | 1009 |
 
-Read it as: one Node process proxies about 15k req/s at 100 concurrent connections. The access log costs about 15%. A Redis-backed rate limit or a cached token check costs about 6% each. A cache HIT skips the upstream and more than doubles throughput. Four workers (`WORKERS=4`) scale to 1.6× to 2.4× on this laptop; the sub-linear part is the efficiency cores and the load generator sharing the machine, not a lock in the gateway (limits and cache live in Redis, there is no shared state between workers).
+Read it as: one Node process proxies about 21k req/s at 100 concurrent connections. The access log costs about 20%. A Redis-backed rate limit or a cached token check costs about 13% each. A cache HIT skips the upstream and lifts throughput to 32k. Four workers (`WORKERS=4`) scale to 1.4× to 1.7× on this laptop; the sub-linear part is the efficiency cores and the load generator sharing the machine, not a lock in the gateway (limits and cache live in Redis, there is no shared state between workers).
 
 ### Latency at a fixed 2,000 req/s (oha)
 
 | Scenario | achieved req/s | p50 ms | p90 ms | p99 ms | p99.9 ms |
 |---|---|---|---|---|---|
-| proxy, tuned | 2,000 | 0.518 | 0.912 | 6.321 | 13.196 |
-| auth + rate limit + cache HIT | 2,000 | 0.593 | 0.885 | 6.598 | 13.559 |
-| proxy, tuned, 4 workers | 2,000 | 0.489 | 0.904 | 3.203 | 11.46 |
+| direct upstream (baseline) | 2,000 | 0.128 | 0.208 | 0.411 | 3.094 |
+| proxy, tuned | 2,000 | 0.411 | 0.816 | 6.621 | 24.307 |
+| auth + rate limit + cache HIT | 2,000 | 0.5 | 0.759 | 7.441 | 106.675 |
+| proxy, tuned, 4 workers | 2,000 | 0.4 | 0.783 | 3.035 | 16.275 |
 
-This is the number to quote for "what does the gateway add": at 2,000 req/s a single Sancus process answers a proxied request in about 0.5 ms median and 6 ms at p99, including the upstream round trip, with rate limiting, auth and cache adding roughly 0.1 ms.
+This is the number to quote for "what does the gateway add": the upstream alone answers in 0.13 ms median; through a single Sancus process it is 0.41 ms, so the gateway adds about 0.3 ms at the median and 6 ms at p99, with rate limiting, auth and cache adding roughly 0.1 ms more. The p99.9 spikes are V8 garbage collection pauses; four workers spread them out.
 
 ## Sancus vs Kong, APISIX, Traefik, KrakenD (Docker, 2 vCPU)
 
 Plain proxy of `GET /echo` to the same nginx upstream. Sancus runs the published `sancus:slim` image with `WORKERS=2`; Kong and APISIX run 2 nginx workers; Traefik and KrakenD use their defaults. Access logs off everywhere.
 
+Read the ranking, not the digits: in this 2-vCPU VM the gateway, nginx and wrk fight for the same two cores, and the same Kong config measured 58k in one session and 78k in the next. The ranking never changed across four sessions. Run `compare.sh` on a Linux host with dedicated cores for numbers you can quote.
+
 | Gateway | Runtime | req/s | p50 ms | p99 ms | RSS MB |
 |---|---|---|---|---|---|
-| nginx upstream direct | C | 349,000 | 0.12 | 2.1 | – |
-| APISIX 3.9 | C / LuaJIT (OpenResty) | 74,100 | 1.3 | 2.9 | 78 |
-| Kong 3.7 | C / LuaJIT (OpenResty) | 58,500 | 1.6 | 3.9 | 285 |
-| Traefik 3.1 | Go | 46,200 | 2.0 | 6.6 | 116 |
-| KrakenD 2.7 | Go | 25,600 | 3.7 | 11.4 | 37 |
-| **Sancus 2.0** | Node 22 | **10,800** | **8.1** | **23.8** | 179 |
+| nginx upstream direct | C | 344,000 | 0.12 | 2.1 | – |
+| APISIX 3.9 | C / LuaJIT (OpenResty) | 86,700 | 1.1 | 2.4 | 78 |
+| Kong 3.7 | C / LuaJIT (OpenResty) | 78,200 | 1.2 | 2.7 | 285 |
+| Traefik 3.1 | Go | 48,900 | 1.9 | 6.3 | 116 |
+| KrakenD 2.7 | Go | 27,700 | 3.4 | 10.5 | 37 |
+| **Sancus 2.0** | Node 22 | **12,000** | **7.1** | **22.4** | 179 |
 
 ## Where Sancus stands
 
-Honest reading: on raw proxy throughput Sancus is about 7× behind APISIX, 5× behind Kong, 4× behind Traefik and 2.4× behind KrakenD per core. That is the cost of a JavaScript HTTP stack (Express + http-proxy) versus nginx or Go. Per request it spends roughly 90 µs of CPU; APISIX spends about 13 µs.
+Honest reading: on raw proxy throughput Sancus is about 7× behind APISIX, 6× behind Kong, 4× behind Traefik and 2.3× behind KrakenD per core in the Docker run, and 2× behind a raw Node proxy on the host. That is the cost of a JavaScript HTTP stack (Express on Node) versus nginx or Go. Per request it spends roughly 47 µs of CPU; APISIX spends about 12 µs.
 
 What that means in practice:
 
-- One Sancus process handles ~15k req/s, one 4-worker pod on 4 cores handles 25k to 35k. A service doing 5k req/s at peak, which is most products, needs one or two small pods. Throughput per pod is rarely the reason to pick a gateway at that scale.
-- Latency added at realistic load is sub-millisecond at the median (the oha table), which is what users feel. The p99 gap versus nginx-based gateways is single-digit milliseconds.
+- One Sancus process handles ~21k req/s, a 4-worker pod on 4 cores 30k to 37k. A service doing 5k req/s at peak, which is most products, needs one or two small pods. Throughput per pod is rarely the reason to pick a gateway at that scale.
+- Latency added at realistic load is about 0.3 ms at the median (the oha table), which is what users feel. The p99 gap versus nginx-based gateways is single-digit milliseconds.
 - Memory per worker is higher than Go or C gateways. `NODE_OPTIONS=--max-old-space-size=256` (set in the image) trades ~2% throughput for a ~40% smaller RSS.
 
 Where Sancus wins is not this table: one YAML per service, SWR/LFU caching, two-tier rate limiting, ForwardAuth, policies in plain JavaScript, a 5-minute setup. If your bottleneck is the gateway's CPU at 50k+ req/s per node, use APISIX or Kong. If it is developer time, this is the trade Sancus makes on purpose.
 
-Roadmap items that would move the number, in order of expected gain: replace `http-proxy` with a direct `http.request` pipe (the library allocates per request and predates streams3), trim the Express middleware chain on the hot path, and pre-resolve per-route decisions (auth, cache, rate-limit applicability) at config load instead of per request. A raw Node proxy does 25k to 30k req/s per core, so roughly 2× is available before leaving JavaScript.
+### What the profiling found, and what it changed
+
+To see where the per-request cost lives, four proxies were measured against the same upstream on the host (single process, 100 connections):
+
+| Stack | req/s | CPU per request |
+|---|---|---|
+| raw Node `http.request` pipe, no framework | 42,100 | 24 µs |
+| the `http-proxy` library alone | 24,200 | 41 µs |
+| Express + `http-proxy`, no gateway logic | 15,800 | 63 µs |
+| Sancus 2.0 before this change | 14,900 | 67 µs |
+
+All of Sancus's own logic (route matching, auth, rate limit, cache, policies, metrics, request ids) cost 6%. The `http-proxy` library cost 42% and Express 35%. So `http-proxy` was replaced with a direct `http.request` pipe (`src/services/proxy.service.ts`), keeping Express:
+
+| | before | after |
+|---|---|---|
+| proxy, tuned, 1 process | 14,900 req/s, p50 6.4 ms, p99 10.9 ms | 21,400 req/s, p50 4.5 ms, p99 8.0 ms |
+| auth + rate limit + cache HIT, 4 workers | 35,200 req/s | 37,100 req/s |
+
+The same benchmark run also caught a real bug: the upstream connection pool capped free sockets at 32, so under load it churned sockets, produced 16,000 TIME_WAIT entries in eight seconds and then failed with `EADDRNOTAVAIL` (502s). The pool is now uncapped (`UPSTREAM_MAX_SOCKETS`, default 256) and every table above has zero non-2xx responses.
+
+The remaining lever is Express itself: a plain `http` server with the same middleware as functions would land around 33k to 38k req/s per process. It is not done because four workers already pass that number, and it touches every middleware.
 
 ## Reproduce
 
