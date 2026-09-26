@@ -89,8 +89,8 @@ class CacheService {
       if (config.strategy === 'LFU') redis.zincrby(CacheService.LFU_ZSET_PREFIX, 1, cacheKey).catch(() => {});
 
       if (config.strategy === 'SWR') {
-        const ttlRemaining = await redis.ttl(cacheKey);
-        const isStale = ttlRemaining > 0 && ttlRemaining < config.ttl * 0.25;
+        const ttlRemainingMs = await redis.pttl(cacheKey);
+        const isStale = ttlRemainingMs > 0 && ttlRemainingMs < config.ttl * 1000 * 0.25;
         if (isStale && (await redis.get(`${cacheKey}:_revalidating`))) return { data: cached, stale: false };
         return { data: cached, stale: isStale };
       }

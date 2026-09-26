@@ -9,6 +9,7 @@
     "start": "node -r newrelic build/index.js",
     "test": "jest",
     "check": "node build/commands/check.js",
+    "test:e2e": "node tests/e2e/run.js",
     "lint": "eslint . --ext .ts",
     "lint-and-fix": "eslint . --ext .ts --fix",
     "prettier-watch": "onchange 'src/**/*.ts' -- prettier --write {{changed}}"

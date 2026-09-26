@@ -110,11 +110,16 @@ class RouteRegistry {
 
     for (const { route, regex, isParameterized } of entry.compiledRoutes) {
       const routeMatches = isParameterized ? regex!.test(routePath) : routePath === route.path;
-      if (routeMatches && (route.methods.includes(method) || method === 'OPTIONS')) {
+      if (routeMatches && this.methodAllowed(route, method)) {
         return route;
       }
     }
     return undefined;
+  }
+
+  /** OPTIONS is always accepted on a known path; HEAD is implied by GET (RFC 9110). */
+  private methodAllowed(route: APIRoute, method: HttpMethod): boolean {
+    return route.methods.includes(method) || method === 'OPTIONS' || (method === 'HEAD' && route.methods.includes('GET'));
   }
 
   /** Methods accepted on a path (any route). Empty means the path is unknown → 404, else → 405. */
@@ -125,6 +130,7 @@ class RouteRegistry {
     for (const { route, regex, isParameterized } of entry.compiledRoutes) {
       if (isParameterized ? regex!.test(routePath) : routePath === route.path) {
         route.methods.forEach((m) => methods.add(m));
+        if (route.methods.includes('GET')) methods.add('HEAD');
       }
     }
     return [...methods];

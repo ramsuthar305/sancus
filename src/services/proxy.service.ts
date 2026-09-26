@@ -42,6 +42,8 @@ const DEFAULT_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS) || 60_000;
 const UNHEALTHY_TTL_MS = Number(process.env.UPSTREAM_UNHEALTHY_TTL_MS) || 30_000;
 const IDEMPOTENT = new Set(['GET', 'HEAD', 'OPTIONS']);
 const RETRYABLE = new Set(['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'EPIPE']);
+// Only connection-level failures mark a node unhealthy; a reset or timeout on one request is not the node's fault.
+const NODE_DOWN = new Set(['ECONNREFUSED', 'EHOSTUNREACH', 'ENOTFOUND', 'EAI_AGAIN']);
 
 const agentOptions = { keepAlive: true, maxSockets: 128, maxFreeSockets: 32, timeout: 60_000 };
 const httpAgent = new http.Agent(agentOptions);
@@ -158,7 +160,7 @@ class ProxyService {
         },
         (err: NodeJS.ErrnoException) => {
           const retryable = RETRYABLE.has(err.code ?? '');
-          if (retryable) this.markDown(ctx.serviceName, node);
+          if (NODE_DOWN.has(err.code ?? '')) this.markDown(ctx.serviceName, node);
           if (retryable && !res.headersSent && IDEMPOTENT.has(ctx.method) && ctx.attempt < (ctx.service.retries ?? 0)) {
             ctx.attempt += 1;
             logger.warn({ service: ctx.serviceName, node, attempt: ctx.attempt, err: err.code }, 'retrying upstream');

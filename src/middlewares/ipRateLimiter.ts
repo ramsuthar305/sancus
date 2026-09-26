@@ -132,7 +132,7 @@ class IPRateLimiter {
         if (allowed === 1) return next();
 
         rateLimited.inc({ service: '-', route: '-', scope: 'ip' });
-        this.trackBurst(ip).catch((e) => logger.warn({ err: (e as Error).message }, 'burst tracking failed'));
+        await this.trackBurst(ip).catch((e) => logger.warn({ err: (e as Error).message }, 'burst tracking failed'));
         const windowSeconds = Math.ceil(this.capacity / this.refillRatePerSecond);
         Object.entries(rateLimitHeaders(this.capacity, tokens, retryAfter, windowSeconds)).forEach(([k, v]) => res.setHeader(k, v));
         res.setHeader('Retry-After', String(retryAfter));

@@ -229,6 +229,14 @@ apis:
   });
 
   describe('findRoute() — cross-service isolation', () => {
+    it('should accept HEAD wherever GET is allowed', () => {
+      const registry = RouteRegistry.getInstance();
+      registry.initialize(tmpDir);
+      expect(registry.findRoute('example', '/api/users/', 'HEAD')).toBeDefined();
+      expect(registry.findRoute('auth', '/v1/generate/token', 'HEAD')).toBeUndefined();
+      expect(registry.allowedMethods('example', '/api/users/')).toContain('HEAD');
+    });
+
     it('should not find example routes in auth service', () => {
       const registry = RouteRegistry.getInstance();
       registry.initialize(tmpDir);
