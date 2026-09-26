@@ -25,6 +25,29 @@ export function interpolateEnv(text: string): string {
   return text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (_m, name, fallback) => process.env[name] ?? fallback ?? '');
 }
 
+/**
+ * A route that knows who the user is (auth required, or resolveUser) may answer each user
+ * differently. Caching it under a key without the user would hand one user's response to the
+ * next. Require key PATH_QUERY_USER, or an explicit `shared: true` saying every user gets the
+ * same answer.
+ */
+function checkCacheRules(filePath: string, config: APIConfig): void {
+  for (const api of config.apis) {
+    for (const route of api.routes) {
+      const c = route.cache;
+      if (!c || c.shared || c.key === 'PATH_QUERY_USER') continue;
+      const seesUser = !route.bypass?.includes('AUTH') || route.resolveUser;
+      if (seesUser) {
+        throw new ConfigError(
+          filePath,
+          `route ${route.path}: the response may differ per user but the cache key "${c.key ?? 'PATH'}" is shared between users. ` +
+            'Use key: PATH_QUERY_USER, or add shared: true if every user gets the same response.'
+        );
+      }
+    }
+  }
+}
+
 /** Parse and validate one YAML file. Throws ConfigError on any problem. */
 export function loadConfigFile(filePath: string): APIConfig {
   let parsed: unknown;
@@ -36,6 +59,7 @@ export function loadConfigFile(filePath: string): APIConfig {
   if (!validate(parsed)) {
     throw new ConfigError(filePath, formatErrors(validate.errors));
   }
+  checkCacheRules(filePath, parsed);
   return parsed;
 }
 

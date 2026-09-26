@@ -9,7 +9,7 @@ export const requestContext = new AsyncLocalStorage<RequestContext>();
 
 // LOG_LEVEL           pino level (default info)
 // LOG_HEADERS_REDACT  comma-separated header names whose values are masked in logs
-const redactHeaders = (process.env.LOG_HEADERS_REDACT ?? 'authorization,cookie,set-cookie')
+const redactHeaders = (process.env.LOG_HEADERS_REDACT ?? 'authorization,cookie,set-cookie,x-api-key,proxy-authorization')
   .split(',')
   .map((h) => h.trim().toLowerCase())
   .filter(Boolean);

@@ -56,7 +56,7 @@ apis:
         bypass: [AUTH, GEO_FENCE]
         resolveUser: true
         rateLimit: { perMinute: 120, perDay: 5000, key: USER_OR_IP, group: search, hideHeaders: false }
-        cache: { strategy: SWR, ttl: 300, key: PATH_QUERY, browserTtl: 60, varyHeaders: [Accept-Language], statusCodes: [200, 404] }
+        cache: { strategy: SWR, ttl: 300, key: PATH_QUERY, browserTtl: 60, varyHeaders: [Accept-Language], statusCodes: [200, 404], shared: true }
         headers: { add: { X-Route: search } }
         policies:
           require-header: { header: X-Client }</code></pre>
@@ -98,7 +98,7 @@ apis:
 <tr><td><code>POLICIES_DIR</code></td><td>./policies</td><td>Custom policy modules</td></tr>
 <tr><td><code>TRUST_PROXY</code></td><td>loopback, linklocal, uniquelocal</td><td>Which peers may set X-Forwarded-For. See <a href="operations.html#trust-proxy">running in production</a>.</td></tr>
 <tr><td><code>REDIS_URL</code></td><td>redis://127.0.0.1:6379</td><td>Token cache, rate limits, response cache. Without it those features fail open.</td></tr>
-<tr><td><code>ALLOWED_ORIGINS</code></td><td>http://localhost:5173</td><td>CORS origins, comma-separated, <code>/regex/</code> allowed</td></tr>
+<tr><td><code>ALLOWED_ORIGINS</code></td><td>http://localhost:5173</td><td>CORS origins, comma-separated. A <code>/regex/</code> entry must match the whole origin, for example <code>/https:\/\/([a-z0-9-]+\.)?example\.com/</code></td></tr>
 <tr><td><code>AUTH_*</code></td><td></td><td>See <a href="auth.html">authentication</a></td></tr>
 <tr><td><code>IP_RATE_LIMIT_ENABLED</code>, <code>IP_RATE_LIMIT_CAPACITY</code>, <code>IP_RATE_LIMIT_REFILL_RATE</code></td><td>true, 200, 5</td><td>Global per-IP bucket</td></tr>
 <tr><td><code>IP_BLOCK_THRESHOLD</code>, <code>IP_BLOCK_WINDOW_MS</code>, <code>IP_BLOCK_DURATION_MS</code></td><td>20, 60000, 900000</td><td>Block an IP after N 429s in the window, for the duration</td></tr>
@@ -107,9 +107,9 @@ apis:
 <tr><td><code>CACHE_LFU_MAX_ENTRIES</code></td><td>1000</td><td>LFU eviction bound</td></tr>
 <tr><td><code>KEEP_ALIVE_TIMEOUT_MS</code></td><td>125000</td><td>Must exceed your load balancer's idle timeout</td></tr>
 <tr><td><code>SHUTDOWN_TIMEOUT_MS</code></td><td>10000</td><td>Drain window on SIGTERM</td></tr>
-<tr><td><code>LOG_LEVEL</code>, <code>LOG_HEADERS_REDACT</code>, <code>LOG_HEADERS_DROP</code></td><td>info, authorization,cookie,set-cookie, none</td><td>Log level; headers masked or removed from access logs</td></tr>
+<tr><td><code>LOG_LEVEL</code>, <code>LOG_HEADERS_REDACT</code>, <code>LOG_HEADERS_DROP</code></td><td>info, authorization,cookie,set-cookie,x-api-key,proxy-authorization, none</td><td>Log level; headers masked or removed from access logs</td></tr>
 <tr><td><code>ALERT_WEBHOOK_URL</code>, <code>ALERT_COOLDOWN_MS</code></td><td>none, 60000</td><td>Slack or Discord webhook for 5xx, proxy errors, limit breaches, breaker events</td></tr>
-<tr><td><code>ADMIN_TOKEN</code></td><td>none</td><td>Protects <code>/metrics</code>, <code>/routes</code>, <code>/cache</code></td></tr>
+<tr><td><code>ADMIN_TOKEN</code></td><td>none</td><td>Turns on <code>/metrics</code>, <code>/routes</code> and <code>DELETE /cache</code>, behind this bearer token. Unset, they answer 404.</td></tr>
 <tr><td><code>GEOFENCE_FILE</code></td><td>./in.json</td><td>GeoJSON of banned polygons. Empty means off.</td></tr>
 </table>
 

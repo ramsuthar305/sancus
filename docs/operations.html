@@ -41,7 +41,7 @@
 <tr><td><code>GET /routes</code></td><td>Loaded services, routes and policies</td></tr>
 <tr><td><code>DELETE /cache/:service</code></td><td>Purge the response cache for one service</td></tr>
 </table>
-<p>Set <code>ADMIN_TOKEN</code> and the last three require <code>Authorization: Bearer &lt;token&gt;</code>. The health endpoints stay open for probes.</p>
+<p>The last three exist only when <code>ADMIN_TOKEN</code> is set, and then require <code>Authorization: Bearer &lt;token&gt;</code>. Without a token they answer 404, so nobody can read your routing table or wipe your cache. Prometheus sends the token with <code>authorization: { credentials: ... }</code> in its scrape config. The health endpoints stay open for probes.</p>
 
 <h2>Metrics</h2>
 <table>

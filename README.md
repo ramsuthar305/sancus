@@ -9,7 +9,7 @@
 ## 🚀 Features
 
 - Declarative YAML per service, JSON-Schema validated, hot-reloaded on change, `npm run check` to lint
-- Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`
+- Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`, and `.` / `..` path segments refused
 - Pluggable auth via the ForwardAuth contract (Traefik / APISIX / Envoy style) with a shared Redis token cache
 - Optional geo-fencing against a GeoJSON polygon set (off until you ship polygons)
 - Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding window; `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
@@ -86,7 +86,10 @@ apis:
           browserTtl: 60            # emits Cache-Control to clients
           varyHeaders: [Accept-Language]
           statusCodes: [200, 404]   # default 200, 301, 404
+          shared: true              # every user gets the same answer; required when the route knows the user
 ```
+
+A cached route that requires auth, or uses `resolveUser`, must use `key: PATH_QUERY_USER` or say `shared: true`. Sancus refuses to load it otherwise, because a shared key would hand one user's response to the next.
 
 Validate without starting the gateway:
 
@@ -108,7 +111,7 @@ npm run check -- ./cfg   # another directory
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | Which peers may set X-Forwarded-For. The default covers a load balancer or ingress in private address space; list public proxies (e.g. Cloudflare CIDRs) explicitly. `false` is refused while the IP limiter is on |
 | `IP_RATE_LIMIT_ENABLED` | `true` | Global per-IP limiter on/off |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Token cache, rate limits, response cache. Everything fails open without it |
-| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated, `/regex/` allowed |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated. `/regex/` entries must match the whole origin, e.g. `/https:\/\/([a-z0-9-]+\.)?example\.com/` |
 | `AUTH_URL` | | Base URL of your token-verification service (`VERITAS_URL` accepted) |
 | `AUTH_VERIFY_PATH` / `AUTH_VERIFY_METHOD` | `/v1/verify/token` / `POST` | Endpoint appended to `AUTH_URL` |
 | `AUTH_TOKEN_IN` / `AUTH_TOKEN_FIELD` | `body` / `token` | Send the token as a JSON body field, or as a `header` (default `authorization`) |
@@ -130,9 +133,9 @@ npm run check -- ./cfg   # another directory
 | `KEEP_ALIVE_TIMEOUT_MS` | `125000` | Must exceed your load balancer's idle timeout |
 | `SHUTDOWN_DELAY_MS` | `5000` | After SIGTERM, keep serving (readiness 503, `Connection: close`) this long so load balancers stop routing here |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | Then drain in-flight requests for up to this long before a forced exit |
-| `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie` / | pino level; headers masked or removed from access logs |
+| `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie,x-api-key,proxy-authorization` / | pino level; headers masked or removed from access logs |
 | `ALERT_WEBHOOK_URL` / `ALERT_COOLDOWN_MS` | / `60000` | Slack/Discord-compatible webhook (`DISCORD_WEBHOOK_URL` accepted); per-key dedupe |
-| `ADMIN_TOKEN` | | If set, `/metrics`, `/routes` and `/cache` require `Authorization: Bearer <token>` |
+| `ADMIN_TOKEN` | | Turns on `/metrics`, `/routes` and `DELETE /cache/:service`, which then require `Authorization: Bearer <token>`. Unset, they answer 404 |
 | `GEOFENCE_FILE` | `./in.json` | GeoJSON of banned polygons |
 
 ---

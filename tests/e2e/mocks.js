@@ -27,9 +27,10 @@ function upstream(label) {
       if (p === '/cookie') return json({ x: 1 }, { 'Set-Cookie': 's=1' });
       if (p === '/fail') { res.writeHead(500); return res.end('boom'); }
       if (p === '/gz') {
-        const gz = zlib.gzipSync(JSON.stringify({ gz: true, pad: 'x'.repeat(2000) }));
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' });
-        return res.end(gz);
+        const bodyJson = JSON.stringify({ gz: true, pad: 'x'.repeat(2000) });
+        if (!/gzip/.test(String(req.headers['accept-encoding'] || ''))) return json(JSON.parse(bodyJson));
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' });
+        return res.end(zlib.gzipSync(bodyJson));
       }
       if (p === '/count') return json({ count: ++state.count });
       if (p === '/swr') return json({ swr: ++state.swr });
