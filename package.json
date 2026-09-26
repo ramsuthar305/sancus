@@ -2,7 +2,7 @@
   "name": "sancus",
   "version": "2.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "build/index.js",
   "scripts": {
     "dev": "export NODE_ENV=production && concurrently \"npx tsc --watch\" \"nodemon -q dist/index.js\"",
     "build": "rimraf ./build && tsc",
@@ -12,7 +12,8 @@
     "test:e2e": "node tests/e2e/run.js",
     "lint": "eslint . --ext .ts",
     "lint-and-fix": "eslint . --ext .ts --fix",
-    "prettier-watch": "onchange 'src/**/*.ts' -- prettier --write {{changed}}"
+    "prettier-watch": "onchange 'src/**/*.ts' -- prettier --write {{changed}}",
+    "prepack": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -93,5 +94,16 @@
         }
       ]
     }
+  },
+  "files": [
+    "build",
+    "api_configs",
+    "in.json",
+    "k8s",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
   }
 }
