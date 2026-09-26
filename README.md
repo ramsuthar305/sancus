@@ -117,6 +117,7 @@ npm run check -- ./cfg   # another directory
 | `AUTH_UPSTREAM_HEADERS` | | Auth-response headers copied onto the upstream request |
 | `AUTH_CLIENT_HEADERS` | | Auth-response headers returned to the client on rejection |
 | `AUTH_FORWARD_HEADER` | `X-AUTHORIZED-FOR-ID` | Header carrying the resolved user id upstream |
+| `STRIP_REQUEST_HEADERS` | | Extra headers deleted from every client request. `AUTH_FORWARD_HEADER` and `AUTH_UPSTREAM_HEADERS` are always deleted, so clients cannot spoof identity |
 | `AUTH_TIMEOUT_MS` / `AUTH_CACHE_TTL` | `5000` / `60` | Auth call timeout, positive-result cache seconds |
 | `AUTH_FAIL_OPEN` / `AUTH_STATUS_ON_ERROR` | `false` / `403` | Behaviour when the auth service is unreachable |
 | `IP_RATE_LIMIT_CAPACITY` / `IP_RATE_LIMIT_REFILL_RATE` | `200` / `5` | Global per-IP bucket size and tokens per second |
@@ -185,6 +186,7 @@ New Relic is not bundled. If you want it: `npm i newrelic` and start with `node 
 
 Sancus does not implement auth itself. For every route without `AUTH` in `bypass` it calls your verification service using the ForwardAuth contract: the request carries `X-Forwarded-Method`, `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Uri`, `X-Forwarded-For` plus the client headers listed in `AUTH_REQUEST_HEADERS`, and the token either in the JSON body or as a header.
 
+- Any `X-AUTHORIZED-FOR-ID` (or `AUTH_FORWARD_HEADER`) and `AUTH_UPSTREAM_HEADERS` values sent by the client are deleted on arrival, on every route, so they can only come from the gateway.
 - `2xx` containing `AUTH_USER_ID_FIELD` → valid. The id is forwarded as `AUTH_FORWARD_HEADER`; headers listed in `AUTH_UPSTREAM_HEADERS` are copied onto the upstream request; the result is cached in Redis for `AUTH_CACHE_TTL` seconds.
 - Any other status → the auth service's status and body are returned to the client verbatim (plus `AUTH_CLIENT_HEADERS`).
 - Unreachable → `AUTH_STATUS_ON_ERROR`, or anonymous pass-through when `AUTH_FAIL_OPEN=true`.

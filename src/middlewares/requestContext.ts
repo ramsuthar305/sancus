@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
 import pinoHttp from 'pino-http';
 import getLogger, { requestContext } from '../configs/logger';
+import { GATEWAY_OWNED_HEADERS } from '../clients/authClient';
 
 export const REQUEST_ID_HEADER = 'X-Request-Id';
 
@@ -23,6 +24,15 @@ export function requestIdMiddleware(req: Request, res: Response, next: NextFunct
   (req as any).id = id;
   res.setHeader(REQUEST_ID_HEADER, id);
   requestContext.run({ requestId: id }, next);
+}
+
+/**
+ * Remove gateway-owned identity headers from the incoming request before anything reads it,
+ * so policies, logs and the proxy only ever see values the gateway set itself.
+ */
+export function stripOwnedHeaders(req: Request, _res: Response, next: NextFunction): void {
+  for (const h of GATEWAY_OWNED_HEADERS) delete req.headers[h];
+  next();
 }
 
 export const accessLogger = pinoHttp({

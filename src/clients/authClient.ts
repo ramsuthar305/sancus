@@ -41,6 +41,18 @@ const REQUEST_HEADERS = list(process.env.AUTH_REQUEST_HEADERS, ['authorization']
 const UPSTREAM_HEADERS = list(process.env.AUTH_UPSTREAM_HEADERS);
 const CLIENT_HEADERS = list(process.env.AUTH_CLIENT_HEADERS);
 const TIMEOUT_MS = Number(process.env.AUTH_TIMEOUT_MS) || 5000;
+export const AUTH_FORWARD_HEADER = (process.env.AUTH_FORWARD_HEADER || 'X-AUTHORIZED-FOR-ID').toLowerCase();
+
+/**
+ * Headers only the gateway may set. Upstreams trust them as verified identity, so any value a
+ * client sends is removed on arrival: the user-id header, every AUTH_UPSTREAM_HEADERS entry, and
+ * anything listed in STRIP_REQUEST_HEADERS (comma-separated) for other headers your services trust.
+ */
+export const GATEWAY_OWNED_HEADERS: ReadonlySet<string> = new Set([
+  AUTH_FORWARD_HEADER,
+  ...UPSTREAM_HEADERS,
+  ...list(process.env.STRIP_REQUEST_HEADERS),
+]);
 const FAIL_OPEN = process.env.AUTH_FAIL_OPEN === 'true';
 const STATUS_ON_ERROR = Number(process.env.AUTH_STATUS_ON_ERROR) || 403;
 

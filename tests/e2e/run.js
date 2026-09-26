@@ -238,6 +238,13 @@ async function flushRedis() {
     check('resolveUser: anonymous passes', r.status === 200 && r.json.headers['x-authorized-for-id'] === undefined);
     r = await get(`${GW}/api/demo/v1/optional`, { Authorization: 'Bearer other' });
     check('resolveUser: identity resolved when token present', r.status === 200 && r.json.headers['x-authorized-for-id'] === '8');
+    // identity headers are gateway-owned: a client must never be able to set them
+    r = await get(`${GW}/api/demo/v1/echo`, { 'X-AUTHORIZED-FOR-ID': '1', 'X-User-Role': 'admin' });
+    check('identity: spoofed user id and role stripped on a bypass-AUTH route', r.status === 200 && r.json.headers['x-authorized-for-id'] === undefined && r.json.headers['x-user-role'] === undefined, JSON.stringify({ id: r.json.headers['x-authorized-for-id'], role: r.json.headers['x-user-role'] }));
+    r = await get(`${GW}/api/demo/v1/optional`, { 'x-authorized-for-id': '1' });
+    check('identity: spoofed user id stripped on an anonymous resolveUser request', r.status === 200 && r.json.headers['x-authorized-for-id'] === undefined, String(r.json.headers['x-authorized-for-id']));
+    r = await get(`${GW}/api/demo/v1/private`, { Authorization: 'Bearer other', 'X-AUTHORIZED-FOR-ID': '1', 'X-User-Role': 'admin' });
+    check('identity: verified values win over client-sent ones', r.json.headers['x-authorized-for-id'] === '8' && r.json.headers['x-user-role'] === 'user', JSON.stringify({ id: r.json.headers['x-authorized-for-id'], role: r.json.headers['x-user-role'] }));
     r = await get(`${GW2}/api/demo/v1/private`, { Authorization: 'Bearer good' });
     check('auth fail-open (degraded): auth down + AUTH_FAIL_OPEN -> anonymous 200', r.status === 200 && r.json.headers['x-authorized-for-id'] === undefined, `${r.status}`);
 
