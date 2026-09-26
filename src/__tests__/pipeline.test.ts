@@ -49,6 +49,7 @@ jest.mock('../services/routeRegistry', () => ({
     getInstance: () => ({
       getService: mockGetService,
       findRoute: mockFindRoute,
+      allowedMethods: jest.fn().mockReturnValue([]),
     }),
   },
 }));
@@ -74,7 +75,9 @@ jest.mock('../services/cache.service', () => ({
       get: mockCacheGet,
       set: jest.fn(),
       markRevalidating: jest.fn(),
-      buildResponseHeaders: jest.fn().mockReturnValue({}),
+      isCacheableRequest: () => true,
+      isCacheableResponse: () => true,
+      responseHeaders: jest.fn().mockReturnValue({}),
     }),
   },
 }));
@@ -107,12 +110,12 @@ jest.mock('../utils/alerts', () => ({
 }));
 
 // Mock auth client
-const mockVerifyToken = jest.fn();
+const mockVerify = jest.fn();
 jest.mock('../clients/authClient', () => ({
   __esModule: true,
   default: {
     getInstance: () => ({
-      verifyToken: mockVerifyToken,
+      verify: mockVerify,
     }),
   },
 }));
@@ -134,6 +137,7 @@ describe('CommonRequestController.pipeline()', () => {
       send: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis(),
       setHeader: jest.fn(),
+      end: jest.fn(),
       headersSent: false,
     };
     mockNext = jest.fn();
@@ -185,20 +189,33 @@ describe('CommonRequestController.pipeline()', () => {
     expect(mockFindRoute).toHaveBeenCalledWith('example', '/api/users/', 'GET');
   });
 
-  it('should return BAD_REQUEST when findRoute returns undefined', async () => {
+  it('should return 404 when findRoute returns undefined', async () => {
     mockFindRoute.mockReturnValue(undefined);
     mockReq = buildReq();
     await controller.pipeline(mockReq, mockRes, mockNext);
 
-    // Should not reach proxy
+    expect(mockRes.status).toHaveBeenCalledWith(404);
     expect(mockProxyWeb).not.toHaveBeenCalled();
   });
 
-  it('should return INVALID_SERVICE_NAME when service not found', async () => {
+  it('should return 404 when service not found', async () => {
     mockGetService.mockReturnValue(undefined);
     mockReq = buildReq();
     await controller.pipeline(mockReq, mockRes, mockNext);
 
+    expect(mockRes.status).toHaveBeenCalledWith(404);
+    expect(mockProxyWeb).not.toHaveBeenCalled();
+  });
+
+  it('should return the auth service response verbatim on rejection', async () => {
+    mockFindRoute.mockReturnValue({ path: '/api/users/', methods: ['GET'], bypass: ['GEO_FENCE'] });
+    mockVerify.mockResolvedValue({ ok: false, status: 403, body: { reason: 'expired' }, headers: { 'www-authenticate': 'Bearer' } });
+    mockReq = buildReq({ headers: { authorization: 'Bearer bad' } });
+    await controller.pipeline(mockReq, mockRes, mockNext);
+
+    expect(mockRes.status).toHaveBeenCalledWith(403);
+    expect(mockRes.send).toHaveBeenCalledWith({ reason: 'expired' });
+    expect(mockRes.setHeader).toHaveBeenCalledWith('www-authenticate', 'Bearer');
     expect(mockProxyWeb).not.toHaveBeenCalled();
   });
 
@@ -307,7 +324,7 @@ describe('CommonRequestController.pipeline()', () => {
       expires_at: 2,
       token_type: 'access',
     };
-    mockVerifyToken.mockResolvedValue(tokenDetails);
+    mockVerify.mockResolvedValue({ ok: true, identity: tokenDetails, upstreamHeaders: {} });
     mockReq = buildReq({
       originalUrl: '/api/example/curation/v1/home-feed/',
       url: '/api/example/curation/v1/home-feed/',

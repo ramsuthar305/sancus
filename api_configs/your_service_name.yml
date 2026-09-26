@@ -1,7 +1,14 @@
 service:
-  name: your_service_name   # becomes the URL prefix: /api/your_service_name/...
-  host: YOUR_SERVICE_HOST   # env var holding the upstream base URL, e.g. http://my-service
+  name: your_service_name        # becomes the URL prefix: /api/your_service_name/...
+  host: YOUR_SERVICE_HOST        # env var holding the upstream base URL, e.g. http://my-service
   port: 80
+  # nodes: [http://svc-a:8080, http://svc-b:8080]   # alternative to host/port: round-robin + passive health
+  timeout: 30000                 # ms waiting for upstream headers
+  retries: 1                     # GET/HEAD/OPTIONS on connection errors
+  # circuitBreaker: { errorThresholdPercentage: 50, volumeThreshold: 10, resetTimeout: 30000 }
+  # rewrite: { from: "^/v1", to: "" }
+  headers:
+    add: { X-Gateway: sancus }
 
 apis:
   - name: Example resource
@@ -13,7 +20,7 @@ apis:
         methods: [GET, PATCH]
 
   - name: Public resource
-    description: Bypass auth/geo-fence, add rate limiting and caching
+    description: Bypass auth/geo-fence, add rate limiting, caching and an IP policy
     routes:
       - path: /v1/public/search
         methods: [GET]
@@ -21,9 +28,13 @@ apis:
         rateLimit:
           perMinute: 120
           perDay: 5000
-          key: USER_OR_IP      # IP | USER | API_KEY | USER_OR_IP
+          key: USER_OR_IP      # IP | USER | API_KEY | USER_OR_IP | IP_USER
+          group: search        # optional: share the quota across routes
         cache:
           strategy: LRU        # LRU | LFU | SWR
           ttl: 300             # seconds in Redis
           key: PATH_QUERY      # PATH | PATH_QUERY | PATH_QUERY_USER
-          browserTtl: 60       # optional: emits Cache-Control/ETag headers
+          browserTtl: 60       # optional: emits Cache-Control to clients
+          varyHeaders: [Accept-Language]
+        policies:
+          ip-restriction: { deny: [] }

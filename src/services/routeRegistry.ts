@@ -5,6 +5,7 @@ import getLogger from '../configs/logger';
 import { loadConfigDir } from '../utils/configValidator';
 import { configReloads } from '../configs/metrics';
 import AlertService from '../utils/alerts';
+import PolicyRegistry from './policyRegistry';
 
 interface CompiledRoute {
   route: APIRoute;
@@ -38,10 +39,13 @@ class RouteRegistry {
   /** Validate, compile and atomically swap in every config under `configDir`. Throws on invalid config. */
   public initialize(configDir: string): void {
     const next = new Map<string, ServiceEntry>();
+    const policyRegistry = PolicyRegistry.getInstance();
     for (const config of loadConfigDir(configDir)) {
+      policyRegistry.compile(config.service, config.service.policies, `service ${config.service.name}`);
       const compiledRoutes: CompiledRoute[] = [];
       for (const api of config.apis) {
         for (const route of api.routes) {
+          policyRegistry.compile(route, route.policies, `${config.service.name} ${route.path}`);
           const isParameterized = /{(\w+):(\w+)}/.test(route.path);
           compiledRoutes.push({
             route,

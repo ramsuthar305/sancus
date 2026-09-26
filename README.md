@@ -1,22 +1,23 @@
 # Sancus
 
-**Sancus** is a lightweight, Node.js-based **API Gateway** designed to sit at the edge of your application architecture. It offers declarative YAML routing, pluggable auth and geo-fencing, two-tier rate limiting, Redis-backed response caching, and optional Kubernetes manifests.
+**Sancus** is a lightweight, Node.js-based **API Gateway** that sits at the edge of your architecture. One YAML file per upstream service gives you routing, pluggable auth, geo-fencing, two-tier rate limiting, Redis-backed response caching, resilience knobs, and the operational endpoints and headers other gateways use.
 
 ---
 
 ## 🚀 Features
 
-- Declarative YAML-based API configuration, pre-compiled into a route registry at startup
-- Multiple upstream services with per-route method matching and typed path params (`{int:id}`, `{str:slug}`)
-- Middleware bypass per route (`AUTH`, `GEO_FENCE`)
-- Token verification via an external auth service, with a shared Redis token cache
-- Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding window (`IP`, `USER`, `API_KEY`, `USER_OR_IP`)
-- Per-route response caching with `LRU`, `LFU`, or `SWR` (stale-while-revalidate) strategies and optional browser cache headers
-- Multipart/form-data forwarding with file validation
-- Server-Sent Events passthrough (no compression, no buffering)
-- gzip compression, keep-alive connection pooling to upstreams, graceful shutdown
-- Optional Discord alerts for 5xx responses, proxy errors, and rate-limit breaches
-- Correlation IDs on every request, forwarded upstream as `Correlation-ID`
+- Declarative YAML per service, JSON-Schema validated, hot-reloaded on change, `npm run check` to lint
+- Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`
+- Pluggable auth via the ForwardAuth contract (Traefik / APISIX / Envoy style) with a shared Redis token cache
+- Geo-fencing against a GeoJSON polygon set
+- Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding window; `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
+- Response cache with `LRU`, `LFU`, `SWR` strategies; `X-Cache-Status`, `X-Cache-Key`, `Age`, `ETag` / 304, honours upstream `Cache-Control`
+- Upstream `nodes` with round-robin and passive health, per-service `timeout`, `retries`, `circuitBreaker`, path `rewrite`, header add/remove
+- Named policies (`ip-restriction` built in, drop your own into `policies/`)
+- `X-Request-Id` honoured, echoed, forwarded, and on every JSON log line (pino)
+- `/health`, `/health/ready`, `/metrics` (Prometheus), `/routes`, `DELETE /cache/:service`
+- Multipart forwarding, SSE passthrough, gzip, keep-alive pooling, graceful drain on SIGTERM
+- Optional Slack / Discord compatible webhook alerts
 
 ---
 
@@ -25,72 +26,106 @@
 ```
 .
 ├── api_configs/          # One YAML per upstream service
-├── k8s/                  # (Optional) example deployment, service, and ingress manifests
-├── in.json               # GeoJSON polygon(s) used by the GEO_FENCE check
+├── policies/             # (Optional) custom policy modules, *.js
+├── k8s/                  # (Optional) example manifests
+├── in.json               # GeoJSON polygons treated as banned territory
 └── src/
-    ├── clients/          # Auth service client
-    ├── controllers/      # Request pipeline (validate → geo-fence → auth → rate-limit → cache → proxy)
-    ├── middlewares/      # IP rate limiter, multipart handler, request logger
-    ├── services/         # Route registry, Redis, rate limit, cache
-    ├── utils/            # CORS, URL parsing, config validation, alerts
-    └── __tests__/        # Jest suites
+    ├── clients/          # ForwardAuth client
+    ├── configs/          # logger, metrics, JSON schema
+    ├── controllers/      # request pipeline
+    ├── middlewares/      # request id, access log, metrics, IP limiter, multipart
+    ├── policies/         # built-in policies
+    ├── routes/           # admin + proxy routers
+    ├── services/         # route registry, proxy, auth, cache, rate limit, policy registry, redis
+    ├── commands/         # `check`
+    └── __tests__/
 ```
 
 ---
 
-## 🔧 API Config Format
+## 🔧 Service Config
 
-See `api_configs/your_service_name.yml` for a complete example.
+Requests to `/api/<service name>/<path>` are matched against the service's routes and proxied to the upstream with `/api/<service name>` stripped. See `api_configs/your_service_name.yml` and `src/configs/apiConfig.schema.json`.
 
 ```yaml
 service:
-  name: your_service_name   # URL prefix: /api/your_service_name/...
-  host: YOUR_SERVICE_HOST   # env var holding the upstream base URL
-  port: 80
+  name: users
+  nodes: [http://users-a:8080, http://users-b:8080]   # or: host: USERS_URL (env var) + port
+  hosts: [api.example.com]        # optional Host allow-list
+  rewrite: { from: "^/v1", to: "" } # optional regex on the upstream path
+  timeout: 10000                  # ms waiting for upstream headers (default 60000)
+  retries: 1                      # GET/HEAD/OPTIONS only, on connection errors
+  circuitBreaker: { errorThresholdPercentage: 50, volumeThreshold: 10, resetTimeout: 30000 }
+  headers: { add: { X-Gateway: sancus }, remove: [Cookie] }
+  policies:
+    ip-restriction: { allow: [10.0.0.0/8] }
 
 apis:
-  - name: Example resource
+  - name: Users
     routes:
-      - path: /v1/example/api/{int:id}
+      - path: /v1/users/{int:id}
         methods: [GET, PATCH]
       - path: /v1/public/search
         methods: [GET]
         bypass: [AUTH, GEO_FENCE]
+        resolveUser: true           # AUTH bypassed but still identify the user if a token is sent
         rateLimit:
           perMinute: 120
           perDay: 5000
-          key: USER_OR_IP
+          key: USER_OR_IP           # IP | USER | API_KEY | USER_OR_IP | IP_USER
+          group: search             # share this quota across every route with the same group
+          hideHeaders: false
         cache:
-          strategy: LRU
-          ttl: 300
-          key: PATH_QUERY
-          browserTtl: 60
+          strategy: SWR             # LRU | LFU | SWR
+          ttl: 300                  # seconds in Redis
+          key: PATH_QUERY           # PATH | PATH_QUERY | PATH_QUERY_USER
+          browserTtl: 60            # emits Cache-Control to clients
+          varyHeaders: [Accept-Language]
+          statusCodes: [200, 404]   # default 200, 301, 404
 ```
 
-Requests to `/api/<service name>/<path>` are validated against the config and proxied to `<host>/<path>`.
+Validate without starting the gateway:
+
+```bash
+npm run check            # ./api_configs
+npm run check -- ./cfg   # another directory
+```
 
 ---
 
 ## ⚙️ Environment Variables
 
-| Variable | Required | Description |
+| Variable | Default | Description |
 |---|---|---|
-| `<SERVICE>_HOST` (per config) | yes | Upstream base URL for each service, e.g. `YOUR_SERVICE_HOST=http://my-service` |
-| `AUTH_URL` | yes | Base URL of your token-verification service |
-| `AUTH_VERIFY_PATH` / `AUTH_VERIFY_METHOD` | no | Endpoint appended to `AUTH_URL` (default `/v1/verify/token`, `POST`) |
-| `AUTH_TOKEN_IN` / `AUTH_TOKEN_FIELD` | no | Send the token in the JSON `body` (default, field `token`) or as a `header` (default `authorization`) |
-| `AUTH_USER_ID_FIELD` | no | Dot-path in the auth response that identifies the user (default `id`), e.g. `user.uuid` |
-| `AUTH_FORWARD_HEADER` | no | Header carrying that id to upstreams (default `X-AUTHORIZED-FOR-ID`) |
-| `AUTH_TIMEOUT_MS` | no | Auth call timeout (default `5000`) |
-| `REDIS_URL` | no | Defaults to `redis://127.0.0.1:6379`. Used for token cache, per-route rate limits, and response cache. Gateway fails open if Redis is down |
-| `ALLOWED_ORIGINS` | no | Comma-separated CORS origins. Wrap in slashes for a regex: `/\.example\.com$/`. Defaults to `http://localhost:5173` |
-| `IP_RATE_LIMIT_CAPACITY` | no | Global per-IP burst tokens (default `200`) |
-| `IP_RATE_LIMIT_REFILL_RATE` | no | Tokens refilled per second (default `5`) |
-| `TRUSTED_IPS` | no | Comma-separated IPs that bypass the IP limiter |
-| `DISCORD_WEBHOOK_URL` | no | If set, sends alerts for 5xx, proxy errors, and rate-limit breaches |
-| `KEEP_ALIVE_TIMEOUT_MS` | no | Server keep-alive timeout (default `125000`). Must exceed your load balancer's idle timeout |
-| `NEW_RELIC_LICENSE_KEY` | no | Only needed if you start with `node -r newrelic` |
-| `HOST` / `NODE_ENV` | no | Bind address (default `0.0.0.0`) and environment |
+| `PORT` / `HOST` | `3000` / `0.0.0.0` | Listen address |
+| `<SERVICE>_HOST` etc. | | Upstream base URL for services using `host:` |
+| `CONFIG_DIR` / `CONFIG_WATCH` | `./api_configs` / `true` | Config location and hot reload |
+| `POLICIES_DIR` | `./policies` | Custom policy modules |
+| `TRUST_PROXY` | `false` | `true`, a hop count (`1`), or Express keywords/CIDRs. Required behind a load balancer for correct client IPs |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Token cache, rate limits, response cache. Everything fails open without it |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated, `/regex/` allowed |
+| `AUTH_URL` | | Base URL of your token-verification service (`VERITAS_URL` accepted) |
+| `AUTH_VERIFY_PATH` / `AUTH_VERIFY_METHOD` | `/v1/verify/token` / `POST` | Endpoint appended to `AUTH_URL` |
+| `AUTH_TOKEN_IN` / `AUTH_TOKEN_FIELD` | `body` / `token` | Send the token as a JSON body field, or as a `header` (default `authorization`) |
+| `AUTH_USER_ID_FIELD` | `id` | Dot-path in the 2xx JSON that identifies the user, e.g. `user.uuid` |
+| `AUTH_REQUEST_HEADERS` | `authorization` | Client headers forwarded to the auth service |
+| `AUTH_UPSTREAM_HEADERS` | | Auth-response headers copied onto the upstream request |
+| `AUTH_CLIENT_HEADERS` | | Auth-response headers returned to the client on rejection |
+| `AUTH_FORWARD_HEADER` | `X-AUTHORIZED-FOR-ID` | Header carrying the resolved user id upstream |
+| `AUTH_TIMEOUT_MS` / `AUTH_CACHE_TTL` | `5000` / `60` | Auth call timeout, positive-result cache seconds |
+| `AUTH_FAIL_OPEN` / `AUTH_STATUS_ON_ERROR` | `false` / `403` | Behaviour when the auth service is unreachable |
+| `IP_RATE_LIMIT_CAPACITY` / `IP_RATE_LIMIT_REFILL_RATE` | `200` / `5` | Global per-IP bucket size and tokens per second |
+| `IP_BLOCK_THRESHOLD` / `IP_BLOCK_WINDOW_MS` / `IP_BLOCK_DURATION_MS` | `20` / `60000` / `900000` | Block an IP after N 429s in the window, for the duration |
+| `TRUSTED_IPS` | | Comma-separated IPs that skip both limiters |
+| `UPSTREAM_TIMEOUT_MS` / `UPSTREAM_UNHEALTHY_TTL_MS` | `60000` / `30000` | Default upstream timeout; how long a failed node is skipped |
+| `CACHE_LFU_MAX_ENTRIES` | `1000` | LFU eviction bound |
+| `KEEP_ALIVE_TIMEOUT_MS` | `125000` | Must exceed your load balancer's idle timeout |
+| `SHUTDOWN_TIMEOUT_MS` | `10000` | Drain window on SIGTERM before forced exit |
+| `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie` / | pino level; headers masked or removed from access logs |
+| `ALERT_WEBHOOK_URL` / `ALERT_COOLDOWN_MS` | / `60000` | Slack/Discord-compatible webhook (`DISCORD_WEBHOOK_URL` accepted); per-key dedupe |
+| `ADMIN_TOKEN` | | If set, `/metrics`, `/routes` and `/cache` require `Authorization: Bearer <token>` |
+| `GEOFENCE_FILE` | `./in.json` | GeoJSON of banned polygons |
+| `NEW_RELIC_LICENSE_KEY` | | Only if you start with `node -r newrelic` |
 
 ---
 
@@ -102,25 +137,29 @@ cd sancus
 npm install
 
 cat > .env <<'ENV'
-YOUR_SERVICE_HOST=http://localhost:8000
+USERS_URL=http://localhost:8000
 AUTH_URL=http://localhost:8001
 REDIS_URL=redis://localhost:6379
 ALLOWED_ORIGINS=http://localhost:5173
+TRUST_PROXY=false
 ENV
 
+npm run check
 npm run build && npm start   # or: npm run dev
 npm test
 ```
-
-The gateway listens on port `3000`.
 
 ---
 
 ## 🔐 Authentication
 
-Sancus does not implement auth itself. For every route without `AUTH` in `bypass`, it takes the incoming `Authorization` header value and calls your verification service as configured by the `AUTH_*` variables. A `2xx` response containing `AUTH_USER_ID_FIELD` means the token is valid; `401` means invalid. Results are cached in Redis for 60s. The resolved id is forwarded upstream as `AUTH_FORWARD_HEADER` and used for `USER`-keyed rate limits and caches.
+Sancus does not implement auth itself. For every route without `AUTH` in `bypass` it calls your verification service using the ForwardAuth contract: the request carries `X-Forwarded-Method`, `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Uri`, `X-Forwarded-For` plus the client headers listed in `AUTH_REQUEST_HEADERS`, and the token either in the JSON body or as a header.
 
-Example for a service that expects `GET /me` with a bearer header and returns `{ "user": { "uuid": "..." } }`:
+- `2xx` containing `AUTH_USER_ID_FIELD` → valid. The id is forwarded as `AUTH_FORWARD_HEADER`; headers listed in `AUTH_UPSTREAM_HEADERS` are copied onto the upstream request; the result is cached in Redis for `AUTH_CACHE_TTL` seconds.
+- Any other status → the auth service's status and body are returned to the client verbatim (plus `AUTH_CLIENT_HEADERS`).
+- Unreachable → `AUTH_STATUS_ON_ERROR`, or anonymous pass-through when `AUTH_FAIL_OPEN=true`.
+
+Example for a service exposing `GET /me` with a bearer header that returns `{ "user": { "uuid": "..." } }`:
 
 ```
 AUTH_URL=https://auth.internal
@@ -128,19 +167,62 @@ AUTH_VERIFY_PATH=/me
 AUTH_VERIFY_METHOD=GET
 AUTH_TOKEN_IN=header
 AUTH_USER_ID_FIELD=user.uuid
+AUTH_UPSTREAM_HEADERS=x-user-role
 ```
 
 ---
 
 ## 🌍 Geo-fencing
 
-Routes without `GEO_FENCE` in `bypass` require an `X-COORDINATES: <lat>,<lon>` header. If the point falls inside any polygon in `in.json`, the request is rejected as a banned territory (`SE0405`). Missing or malformed coordinates return `SE0406` / `SE0407`. Replace the shipped GeoJSON with your own blocked regions, or ship an empty `FeatureCollection` to disable blocking while keeping the header requirement.
+Routes without `GEO_FENCE` in `bypass` require an `X-COORDINATES: <lat>,<lon>` header. A point inside any polygon in `in.json` is rejected as banned territory (`SE0405`); missing or malformed coordinates return `SE0406` / `SE0407`. Ship an empty `FeatureCollection` to disable blocking while keeping the header requirement. `GET /api/geo/check` answers the same question without proxying.
+
+---
+
+## 🧩 Policies
+
+A policy is a named, schema-validated Express middleware referenced from YAML at service or route level. `ip-restriction` (`allow` / `deny`, CIDRs supported) is built in. Add your own as `policies/<name>.js`:
+
+```js
+module.exports = {
+  name: 'require-header',
+  priority: 10, // higher runs first
+  schema: { type: 'object', required: ['header'], properties: { header: { type: 'string' } } },
+  create: ({ header }) => (req, res, next) =>
+    req.headers[header.toLowerCase()] ? next() : res.status(400).json({ message: `missing ${header}` }),
+};
+```
+
+```yaml
+routes:
+  - path: /v1/import
+    methods: [POST]
+    policies:
+      require-header: { header: X-Idempotency-Key }
+```
+
+Unknown policy names or invalid configs reject the config file at startup and on hot reload.
+
+---
+
+## 📡 Operations
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Liveness, always 200 |
+| `GET /health/ready` | 503 until config is loaded and Redis answers, and during shutdown |
+| `GET /metrics` | Prometheus: `sancus_http_requests_total`, `sancus_http_request_duration_seconds`, `sancus_upstream_duration_seconds`, `sancus_upstream_up`, `sancus_config_reloads_total`, `sancus_cache_events_total`, `sancus_rate_limited_total` |
+| `GET /routes` | Loaded services, routes, and registered policies |
+| `DELETE /cache/:service` | Purge every cached response for a service |
+
+Response headers you can rely on: `X-Request-Id` on everything; `X-RateLimit-Limit` / `-Remaining` / `-Reset`, `RateLimit-Limit` / `-Remaining` / `-Reset` and `Retry-After` on rate-limited routes; `X-Cache-Status` (`HIT`, `MISS`, `STALE`, `BYPASS`), `X-Cache-Key`, `Age`, `ETag` on cached routes; `Allow` on 405.
+
+Logs are JSON lines from pino with `requestId` on every entry. Set `LOG_LEVEL=debug` locally.
 
 ---
 
 ## ☸️ Kubernetes
 
-`k8s/` contains example manifests. Point `deployment.yaml` at your image, put env vars in a `sancus-env` secret, and adjust ingress hosts. If you sit behind an AWS ALB, set the ALB idle timeout below `KEEP_ALIVE_TIMEOUT_MS`.
+`k8s/` contains example manifests. Point `deployment.yaml` at your image, put env vars in a `sancus-env` secret, use `/health/ready` as the readiness probe and `/health` as liveness, and adjust ingress hosts. Behind an AWS ALB set `TRUST_PROXY=1` and keep the ALB idle timeout below `KEEP_ALIVE_TIMEOUT_MS`.
 
 ---
 
@@ -152,4 +234,4 @@ MIT. See `LICENSE`.
 
 ## 🙌 Contributing
 
-Pull requests and issues are welcome.
+Pull requests and issues are welcome. Run `npm test` and `npm run check` before opening one.

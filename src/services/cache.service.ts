@@ -1,230 +1,182 @@
-import type { CacheConfig } from '../types/api';
+import { createHash } from 'crypto';
+import type { Request } from 'express';
+import type { IncomingHttpHeaders } from 'http';
 import getLogger from '../configs/logger';
+import type { CacheConfig } from '../types/api';
 import RedisService from './redis.service';
 
-const logger = getLogger();
+export type CacheStatus = 'HIT' | 'MISS' | 'STALE' | 'BYPASS';
+export const CACHE_STATUS_HEADER = 'X-Cache-Status';
+export const CACHE_KEY_HEADER = 'X-Cache-Key';
 
-interface CachedResponse {
+export interface CachedResponse {
   statusCode: number;
   headers: Record<string, string>;
-  body: string;
+  body: string; // base64 — bodies may be gzip or binary, never assume utf-8
   cachedAt: number;
+  etag: string;
 }
+
+const logger = getLogger();
+const DEFAULT_STATUS_CODES = [200, 301, 404];
+const CACHEABLE_METHODS = new Set(['GET', 'HEAD']);
 
 class CacheService {
   private static instance: CacheService;
-  private redisService: RedisService;
+  private readonly redisService = RedisService.getInstance();
 
   private static readonly KEY_PREFIX = 'sancus:cache';
   private static readonly LFU_ZSET_PREFIX = 'sancus:cache:lfu:freq';
-  private static readonly LFU_MAX_ENTRIES = 1000;
+  private static readonly LFU_MAX_ENTRIES = Number(process.env.CACHE_LFU_MAX_ENTRIES) || 1000;
 
-  private constructor() {
-    this.redisService = RedisService.getInstance();
-  }
+  private constructor() {}
 
   public static getInstance(): CacheService {
-    if (!CacheService.instance) {
-      CacheService.instance = new CacheService();
-    }
+    if (!CacheService.instance) CacheService.instance = new CacheService();
     return CacheService.instance;
   }
 
-  /**
-   * Build a Redis cache key based on the cache config's key strategy.
-   */
+  /** Key = prefix:service:strategy:<path[?query][::user][|vary...]>. Service first so a purge can SCAN one prefix. */
   public buildKey(
     config: CacheConfig,
+    service: string,
     path: string,
     query?: string,
-    userId?: string
+    userId?: string,
+    vary?: Record<string, string | undefined>
   ): string {
-    const keyStrategy = config.key || 'PATH';
-    let raw: string;
-
-    switch (keyStrategy) {
-      case 'PATH_QUERY':
-        raw = query ? `${path}?${query}` : path;
-        break;
-      case 'PATH_QUERY_USER':
-        raw = query ? `${path}?${query}` : path;
-        raw = userId ? `${raw}::${userId}` : raw;
-        break;
-      case 'PATH':
-      default:
-        raw = path;
-        break;
-    }
-
-    return `${CacheService.KEY_PREFIX}:${config.strategy}:${raw}`;
+    let raw = path;
+    if (config.key === 'PATH_QUERY' || config.key === 'PATH_QUERY_USER') raw = query ? `${path}?${query}` : path;
+    if (config.key === 'PATH_QUERY_USER' && userId) raw = `${raw}::${userId}`;
+    if (vary) raw += '|' + Object.entries(vary).map(([k, v]) => `${k.toLowerCase()}=${v ?? ''}`).join('|');
+    return `${CacheService.KEY_PREFIX}:${service}:${config.strategy}:${raw}`;
   }
 
-  /**
-   * Retrieve a cached response.
-   * Returns the cached data or null on miss.
-   * For SWR: returns { data, stale } where stale=true means background revalidation is needed.
-   */
-  public async get(
-    cacheKey: string,
-    config: CacheConfig
-  ): Promise<{ data: CachedResponse; stale: boolean } | null> {
+  /** Short digest exposed as X-Cache-Key so operators can correlate without leaking the raw key. */
+  public static shortKey(key: string): string {
+    return createHash('sha256').update(key).digest('hex').slice(0, 16);
+  }
+
+  public isCacheableRequest(req: Request): boolean {
+    if (!CACHEABLE_METHODS.has(req.method)) return false;
+    const cc = String(req.headers['cache-control'] ?? '');
+    if (/no-cache|no-store/i.test(cc)) return false;
+    if (String(req.headers.pragma ?? '').includes('no-cache')) return false;
+    return true;
+  }
+
+  /** Honour the upstream: only configured statuses, and never no-store / private / Set-Cookie responses. */
+  public isCacheableResponse(statusCode: number, headers: IncomingHttpHeaders, config: CacheConfig): boolean {
+    if (!(config.statusCodes ?? DEFAULT_STATUS_CODES).includes(statusCode)) return false;
+    if (/no-store|private/i.test(String(headers['cache-control'] ?? ''))) return false;
+    if (headers['set-cookie']) return false;
+    return true;
+  }
+
+  /** Returns cached data, plus stale=true for SWR entries that need a background refresh. */
+  public async get(cacheKey: string, config: CacheConfig): Promise<{ data: CachedResponse; stale: boolean } | null> {
     const redis = this.redisService.getClient();
-    if (!redis) {
-      logger.error('Redis client unavailable — cache GET falling through to backend');
-      return null;
-    }
+    if (!redis) return null;
 
     try {
       const raw = await redis.get(cacheKey);
       if (!raw) {
-        // Clean up stale ZSET entry if the cache key expired
-        if (config.strategy === 'LFU') {
-          redis.zrem(CacheService.LFU_ZSET_PREFIX, cacheKey).catch((e) => {
-            logger.error(`LFU ZSET cleanup failed (key=${cacheKey}): ${(e as Error).message}`);
-          });
-        }
+        if (config.strategy === 'LFU') redis.zrem(CacheService.LFU_ZSET_PREFIX, cacheKey).catch(() => {});
         return null;
       }
-
       const cached: CachedResponse = JSON.parse(raw);
 
-      if (config.strategy === 'LFU') {
-        // Increment access frequency
-        redis.zincrby(CacheService.LFU_ZSET_PREFIX, 1, cacheKey).catch((e) => {
-          logger.error(`LFU frequency increment failed (key=${cacheKey}): ${(e as Error).message}`);
-        });
-      }
+      if (config.strategy === 'LFU') redis.zincrby(CacheService.LFU_ZSET_PREFIX, 1, cacheKey).catch(() => {});
 
       if (config.strategy === 'SWR') {
         const ttlRemaining = await redis.ttl(cacheKey);
         const isStale = ttlRemaining > 0 && ttlRemaining < config.ttl * 0.25;
-        // Check if already revalidating
-        if (isStale) {
-          const revalidatingKey = `${cacheKey}:_revalidating`;
-          const alreadyRevalidating = await redis.get(revalidatingKey);
-          if (alreadyRevalidating) {
-            return { data: cached, stale: false }; // Someone else is revalidating
-          }
-        }
+        if (isStale && (await redis.get(`${cacheKey}:_revalidating`))) return { data: cached, stale: false };
         return { data: cached, stale: isStale };
       }
-
       return { data: cached, stale: false };
     } catch (error: any) {
-      logger.error(`Cache GET failed (key=${cacheKey}): ${error.message}`);
+      logger.error({ err: error.message, cacheKey }, 'cache GET failed');
       return null;
     }
   }
 
-  /**
-   * Store a response in the cache.
-   */
-  public async set(
-    cacheKey: string,
-    statusCode: number,
-    headers: Record<string, string>,
-    body: string,
-    config: CacheConfig
-  ): Promise<void> {
+  public async set(cacheKey: string, statusCode: number, headers: Record<string, string>, body: Buffer, config: CacheConfig): Promise<void> {
     const redis = this.redisService.getClient();
-    if (!redis) {
-      logger.error('Redis client unavailable — cache SET skipped');
-      return;
-    }
+    if (!redis) return;
 
     try {
       const entry: CachedResponse = {
         statusCode,
         headers,
-        body,
+        body: body.toString('base64'),
         cachedAt: Date.now(),
+        etag: `W/"${createHash('sha256').update(body).digest('base64url').slice(0, 22)}"`,
       };
-
       await redis.set(cacheKey, JSON.stringify(entry), 'EX', config.ttl);
 
       if (config.strategy === 'LFU') {
-        // Initialize frequency score
         await redis.zadd(CacheService.LFU_ZSET_PREFIX, 1, cacheKey);
-
-        // Evict lowest-frequency entries beyond max size
-        const zsetSize = await redis.zcard(CacheService.LFU_ZSET_PREFIX);
-        if (zsetSize > CacheService.LFU_MAX_ENTRIES) {
-          const excess = zsetSize - CacheService.LFU_MAX_ENTRIES;
-          // Get the lowest-frequency keys to evict
-          const evictKeys = await redis.zrange(CacheService.LFU_ZSET_PREFIX, 0, excess - 1);
-          if (evictKeys.length > 0) {
-            // Delete cached responses and remove from ZSET
-            await redis.del(...evictKeys);
-            await redis.zrem(CacheService.LFU_ZSET_PREFIX, ...evictKeys);
-            logger.info(`LFU eviction: removed ${evictKeys.length} low-frequency entries`);
+        const size = await redis.zcard(CacheService.LFU_ZSET_PREFIX);
+        if (size > CacheService.LFU_MAX_ENTRIES) {
+          const evict = await redis.zrange(CacheService.LFU_ZSET_PREFIX, 0, size - CacheService.LFU_MAX_ENTRIES - 1);
+          if (evict.length) {
+            await redis.del(...evict);
+            await redis.zrem(CacheService.LFU_ZSET_PREFIX, ...evict);
           }
         }
       }
-
-      // Clear revalidating flag for SWR
-      if (config.strategy === 'SWR') {
-        const revalidatingKey = `${cacheKey}:_revalidating`;
-        await redis.del(revalidatingKey);
-      }
-
-      logger.info(`Cache SET (key=${cacheKey}, ttl=${config.ttl}s, strategy=${config.strategy})`);
+      if (config.strategy === 'SWR') await redis.del(`${cacheKey}:_revalidating`);
     } catch (error: any) {
-      logger.error(`Cache SET failed (key=${cacheKey}): ${error.message}`);
+      logger.error({ err: error.message, cacheKey }, 'cache SET failed');
     }
   }
 
-  /**
-   * Build browser cache headers. Only emits headers if browserTtl is configured.
-   * Returns empty object when browserTtl is not set (no browser caching).
-   */
-  public buildResponseHeaders(
-    config: CacheConfig,
-    cachedAt?: number
-  ): Record<string, string> {
-    if (!config.browserTtl) return {};
-
-    const headers: Record<string, string> = {};
-    const isPrivate = config.key === 'PATH_QUERY_USER';
-    const scope = isPrivate ? 'private' : 'public';
-
-    if (config.strategy === 'SWR') {
-      const swr = Math.floor(config.browserTtl * 0.25);
-      headers['Cache-Control'] = `${scope}, max-age=${config.browserTtl}, stale-while-revalidate=${swr}`;
-    } else {
-      headers['Cache-Control'] = `${scope}, max-age=${config.browserTtl}`;
+  /** Headers for a response served from (or through) the cache. */
+  public responseHeaders(config: CacheConfig, cacheKey: string, status: CacheStatus, entry?: CachedResponse): Record<string, string> {
+    const headers: Record<string, string> = {
+      [CACHE_STATUS_HEADER]: status,
+      [CACHE_KEY_HEADER]: CacheService.shortKey(cacheKey),
+    };
+    if (entry) {
+      headers.Age = String(Math.max(0, Math.floor((Date.now() - entry.cachedAt) / 1000)));
+      headers.ETag = entry.etag;
     }
-
-    if (cachedAt) {
-      const ageSeconds = Math.floor((Date.now() - cachedAt) / 1000);
-      headers['Age'] = Math.max(0, ageSeconds).toString();
-      headers['ETag'] = `W/"${cachedAt.toString(36)}"`;
+    if (config.browserTtl) {
+      const scope = config.key === 'PATH_QUERY_USER' ? 'private' : 'public';
+      headers['Cache-Control'] =
+        config.strategy === 'SWR'
+          ? `${scope}, max-age=${config.browserTtl}, stale-while-revalidate=${Math.floor(config.browserTtl * 0.25)}`
+          : `${scope}, max-age=${config.browserTtl}`;
     }
-
-    if (isPrivate) {
-      headers['Vary'] = 'Authorization';
-    }
-
+    const vary = [...(config.key === 'PATH_QUERY_USER' ? ['Authorization'] : []), ...(config.varyHeaders ?? [])];
+    if (vary.length) headers.Vary = vary.join(', ');
     return headers;
   }
 
-  /**
-   * Mark a SWR cache key as currently revalidating (60s lock).
-   */
+  /** Mark a SWR key as being revalidated (60s lock) so only one request refreshes it. */
   public async markRevalidating(cacheKey: string): Promise<void> {
     const redis = this.redisService.getClient();
-    if (!redis) {
-      logger.error('Redis client unavailable — markRevalidating skipped');
-      return;
-    }
+    if (!redis) return;
+    await redis.set(`${cacheKey}:_revalidating`, '1', 'EX', 60).catch(() => {});
+  }
 
-    try {
-      const revalidatingKey = `${cacheKey}:_revalidating`;
-      await redis.set(revalidatingKey, '1', 'EX', 60);
-    } catch (error: any) {
-      logger.error(`Cache markRevalidating failed (key=${cacheKey}): ${error.message}`);
-    }
+  /** DELETE /cache/:service — drop every cached response for one service. */
+  public async purgeService(service: string): Promise<number> {
+    const redis = this.redisService.getClient();
+    if (!redis) throw new Error('Redis client unavailable');
+    let cursor = '0';
+    let purged = 0;
+    do {
+      const [next, keys] = await redis.scan(cursor, 'MATCH', `${CacheService.KEY_PREFIX}:${service}:*`, 'COUNT', 500);
+      cursor = next;
+      if (keys.length) {
+        purged += await redis.del(...keys);
+        await redis.zrem(CacheService.LFU_ZSET_PREFIX, ...keys).catch(() => {});
+      }
+    } while (cursor !== '0');
+    return purged;
   }
 }
 
-export type { CachedResponse };
 export default CacheService;

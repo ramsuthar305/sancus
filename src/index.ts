@@ -1,108 +1,113 @@
-// import 'newrelic';
-import bodyParser from 'body-parser';
-import express, { Express, Request, Response } from 'express';
+import compression from 'compression';
+import express, { Express, NextFunction, Request, Response } from 'express';
 import path from 'path';
+import { lifecycle } from './configs/lifecycle';
 import getLogger from './configs/logger';
-import { accessLogger, requestIdMiddleware } from './middlewares/requestContext';
+import IPRateLimiter from './middlewares/ipRateLimiter';
+import { metricsMiddleware } from './middlewares/metrics';
 import handleMultipart from './middlewares/multipartHandler';
-import RouteRegistry from './services/routeRegistry';
+import { accessLogger, requestIdMiddleware } from './middlewares/requestContext';
+import AdminRoute from './routes/admin.route';
 import CommonRequestRoute from './routes/commonRequest.route';
 import GeoFenceRoute from './routes/geoFenceRequest.route';
-import CorsHandler from './utils/corsUtil';
-import { parseTrustProxy } from './utils/clientIp';
-import compression from 'compression';
-import IPRateLimiter from './middlewares/ipRateLimiter';
+import PolicyRegistry from './services/policyRegistry';
 import RedisService from './services/redis.service';
+import RouteRegistry from './services/routeRegistry';
+import ResponseEnum from './types/responseEnums';
+import { parseTrustProxy } from './utils/clientIp';
+import CorsHandler from './utils/corsUtil';
+import SancusResponse from './utils/responseUtil';
 
+const logger = getLogger();
 
-// Validate + compile every YAML config once at startup (throws on invalid config),
+// Custom policies, then validate + compile every YAML config (throws on invalid config),
 // then hot-reload on changes unless CONFIG_WATCH=false.
 const configDir = process.env.CONFIG_DIR || path.join(__dirname, '..', 'api_configs');
+PolicyRegistry.getInstance().loadDir(process.env.POLICIES_DIR || path.join(__dirname, '..', 'policies'));
 const routeRegistry = RouteRegistry.getInstance();
 routeRegistry.initialize(configDir);
 if (process.env.CONFIG_WATCH !== 'false') routeRegistry.watch(configDir);
 
 const app: Express = express();
+const port = Number(process.env.PORT) || 3000;
+const redisService = RedisService.getInstance();
+
+app.disable('x-powered-by');
+app.set('etag', false); // proxied responses keep the upstream ETag; gateway-generated bodies get none
 // Which proxies to trust for X-Forwarded-For; req.ip is derived from this. Default: none.
 app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
-const port = 3000;
-const ipRateLimiter = new IPRateLimiter();
-const redisService = RedisService.getInstance();
 
 app.use(requestIdMiddleware);
 app.use(accessLogger);
-app.use(ipRateLimiter.middleware());
-app.use(compression({
-  threshold: 1024,
-  filter: (req, res) => {
-    // Never compress SSE — browsers buffer the entire compressed response
-    // before decompressing, which defeats real-time streaming.
-    if (res.getHeader('Content-Type')?.toString().includes('text/event-stream')) {
-      return false;
-    }
-    return compression.filter(req, res);
-  },
-}));
-
+app.use(metricsMiddleware);
+app.use(new IPRateLimiter().middleware());
+app.use(
+  compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      // Never compress SSE — browsers buffer the whole compressed response, killing streaming
+      if (res.getHeader('Content-Type')?.toString().includes('text/event-stream')) return false;
+      return compression.filter(req, res);
+    },
+  })
+);
 app.use(handleMultipart);
-
-
-app.use((req: Request, res: Response, next: Function) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   CorsHandler.setHeaders(req, res);
   next();
 });
 
-app.get('/health', (req: Request, res: Response) => {
-  res.status(200).json({ status: 'UP' });
-});
+app.use(AdminRoute);
 app.use('/api/geo', GeoFenceRoute);
 app.use('/api/*', CommonRequestRoute);
 
-// Initialize Redis connection pool before starting server
-async function startServer() {
-  const logger = getLogger();
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  logger.error({ err: err.message, stack: err.stack, url: req.originalUrl }, 'unhandled pipeline error');
+  if (!res.headersSent) new SancusResponse(ResponseEnum.INTERNAL_SERVER_ERROR, {}, res);
+  else res.end();
+});
 
+async function startServer() {
   try {
-    // Initialize Redis connection pool
-    logger.info('Initializing Redis connection pool...');
     await redisService.initializeAndWait();
-    logger.info('✅ Redis connection pool ready');
+    logger.info('Redis connection ready');
   } catch (error) {
-    logger.error(`⚠️  Failed to connect to Redis: ${error}`);
-    logger.warn('Server will start but Redis-dependent features may not work');
+    logger.warn({ err: (error as Error).message }, 'Redis unavailable at startup; limits and cache fail open until it returns');
   }
 
-  // Start the server
-  const host = process.env.HOST || '0.0.0.0';
-  const server = app.listen(port, host, () => {
-    logger.info(`⚡️[server]: Server is running on port ${port}`);
+  const server = app.listen(port, process.env.HOST || '0.0.0.0', () => {
+    logger.info({ port }, 'Sancus gateway listening');
   });
 
   // Keep-alive must exceed the idle timeout of any load balancer in front of the gateway
   // (e.g. AWS ALB defaults to 60s) so the LB never reuses a connection Node already closed.
-  const keepAliveTimeout = Number(process.env.KEEP_ALIVE_TIMEOUT_MS) || 125000;
+  const keepAliveTimeout = Number(process.env.KEEP_ALIVE_TIMEOUT_MS) || 125_000;
   server.keepAliveTimeout = keepAliveTimeout;
-  server.headersTimeout = keepAliveTimeout + 1000; // must be > keepAliveTimeout
+  server.headersTimeout = keepAliveTimeout + 1000;
+
+  // Graceful shutdown: readiness goes 503, stop accepting, drain in-flight, then exit.
+  const shutdown = (signal: string) => {
+    if (lifecycle.shuttingDown) return;
+    lifecycle.shuttingDown = true;
+    logger.info({ signal }, 'shutting down');
+    routeRegistry.close();
+    const force = setTimeout(() => {
+      logger.warn('shutdown timeout reached, exiting with open connections');
+      process.exit(1);
+    }, Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000).unref();
+    server.close(async () => {
+      clearTimeout(force);
+      await redisService.close();
+      process.exit(0);
+    });
+    server.closeIdleConnections?.();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-// Start server
 startServer().catch((error) => {
-  const logger = getLogger();
-  logger.error(`Failed to start server: ${error}`);
+  logger.error({ err: (error as Error).message }, 'failed to start');
   process.exit(1);
 });
-
-let isShuttingDown = false;
-const shutdown = async () => {
-  if (isShuttingDown) {
-    return;
-  }
-  isShuttingDown = true;
-  const logger = getLogger();
-  logger.info('Shutting down Sancus gateway...');
-  await redisService.close(); // Close Redis connection
-  process.exit(0);
-};
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
