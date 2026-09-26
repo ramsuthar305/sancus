@@ -1,0 +1,5 @@
+http:
+  routers:
+    bench: { rule: "PathPrefix(`/`)", service: upstream, entryPoints: [web] }
+  services:
+    upstream: { loadBalancer: { servers: [{ url: "http://upstream:80" }] } }

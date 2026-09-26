@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authentication · Sancus</title>
+<meta name="description" content="How Sancus verifies tokens by calling your own service, and how to plug in any verifier.">
+<meta property="og:title" content="Authentication · Sancus">
+<meta property="og:description" content="How Sancus verifies tokens by calling your own service, and how to plug in any verifier.">
+<meta property="og:image" content="assets/social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">Start here</div><a class="item" href="introduction.html"><span class="n"></span>Introduction</a><div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html" aria-current="page"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
+</nav>
+<main>
+
+<h1>Authentication.</h1>
+<p class="lede">Sancus does not check tokens itself. It calls a verifier you run and trusts the answer. This is the same contract Traefik calls ForwardAuth and APISIX calls forward-auth, so a verifier written for one of those works here.</p><div class="scene"><time>09:25, hour one</time><p>Asha deleted forty lines of token checking from orders. The five steps below replaced them.</p></div>
+
+<h2>The contract</h2>
+<ol class="steps">
+<li>A request arrives for a route without <code>bypass: [AUTH]</code>. Sancus reads the <code>Authorization</code> header.</li>
+<li>Sancus calls <code>AUTH_URL</code> + <code>AUTH_VERIFY_PATH</code>. The token goes in a JSON body field or a header, your choice. The call also carries <code>X-Forwarded-Method</code>, <code>-Proto</code>, <code>-Host</code>, <code>-Uri</code>, <code>-For</code>, and whichever client headers you list in <code>AUTH_REQUEST_HEADERS</code>.</li>
+<li>A 2xx answer with the user id at <code>AUTH_USER_ID_FIELD</code> means valid. Sancus forwards the id as <code>X-AUTHORIZED-FOR-ID</code> and copies any response headers you list in <code>AUTH_UPSTREAM_HEADERS</code> onto the upstream request. The result is cached in Redis for <code>AUTH_CACHE_TTL</code> seconds, keyed by a sha256 of the token.</li>
+<li>Any other status goes back to the client as is: same status, same body, plus response headers you list in <code>AUTH_CLIENT_HEADERS</code>.</li>
+<li>If the verifier is unreachable, the client gets <code>AUTH_STATUS_ON_ERROR</code> (403). Set <code>AUTH_FAIL_OPEN=true</code> to let requests through anonymously instead.</li>
+</ol>
+
+<h2>Variables</h2>
+<table>
+<tr><th>Variable</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>AUTH_URL</code></td><td></td><td>Base URL of the verifier</td></tr>
+<tr><td><code>AUTH_VERIFY_PATH</code>, <code>AUTH_VERIFY_METHOD</code></td><td>/v1/verify/token, POST</td><td>Endpoint and method</td></tr>
+<tr><td><code>AUTH_TOKEN_IN</code>, <code>AUTH_TOKEN_FIELD</code></td><td>body, token</td><td>Send the token as a JSON field, or as a <code>header</code> (default header name <code>authorization</code>)</td></tr>
+<tr><td><code>AUTH_USER_ID_FIELD</code></td><td>id</td><td>Dot path into the 2xx JSON, for instance <code>user.uuid</code></td></tr>
+<tr><td><code>AUTH_REQUEST_HEADERS</code></td><td>authorization</td><td>Client headers forwarded to the verifier</td></tr>
+<tr><td><code>AUTH_UPSTREAM_HEADERS</code></td><td></td><td>Verifier response headers copied to the upstream request</td></tr>
+<tr><td><code>AUTH_CLIENT_HEADERS</code></td><td></td><td>Verifier response headers returned to the client on rejection</td></tr>
+<tr><td><code>AUTH_FORWARD_HEADER</code></td><td>X-AUTHORIZED-FOR-ID</td><td>Header carrying the user id upstream</td></tr>
+<tr><td><code>AUTH_TIMEOUT_MS</code>, <code>AUTH_CACHE_TTL</code></td><td>5000, 60</td><td>Call timeout, positive-result cache seconds</td></tr>
+<tr><td><code>AUTH_FAIL_OPEN</code>, <code>AUTH_STATUS_ON_ERROR</code></td><td>false, 403</td><td>Behaviour when the verifier is down</td></tr>
+</table>
+
+<h2>Three verifiers</h2>
+<h3>A JSON endpoint that takes the token in the body</h3>
+<p>This is the default. Set <code>AUTH_URL</code> and nothing else. Sancus posts <code>{"token": "Bearer ..."}</code> to <code>/v1/verify/token</code> and reads <code>id</code> from the answer.</p>
+<h3>A "who am I" endpoint that reads the bearer header</h3>
+<pre><code class="language-bash">AUTH_URL=https://auth.internal
+AUTH_VERIFY_PATH=/me
+AUTH_VERIFY_METHOD=GET
+AUTH_TOKEN_IN=header
+AUTH_USER_ID_FIELD=user.uuid
+AUTH_UPSTREAM_HEADERS=x-user-role,x-tenant</code></pre>
+<h3>OAuth2 token introspection (RFC 7662)</h3>
+<p>Introspection endpoints answer 200 for every well-formed request and put <code>active: true</code> or <code>false</code> in the body. Sancus treats 2xx as valid, so front the endpoint with a five-line service that returns 401 when <code>active</code> is false. The demo's <code>services/auth.js</code> is a template.</p>
+
+<h2>Public routes that still know who you are</h2>
+<p>A feed that shows more to logged-in users is public but personal. Put <code>bypass: [AUTH]</code> and <code>resolveUser: true</code> on it. Requests without a token pass through anonymously. Requests with a valid token get the user id forwarded. A bad token is ignored rather than rejected.</p>
+
+<h2>What the upstream receives</h2>
+<table>
+<tr><th>Header</th><th>Value</th></tr>
+<tr><td><code>X-AUTHORIZED-FOR-ID</code></td><td>the user id from the verifier</td></tr>
+<tr><td>headers in <code>AUTH_UPSTREAM_HEADERS</code></td><td>copied from the verifier's response, for roles or tenants</td></tr>
+<tr><td><code>X-Request-Id</code></td><td>the request id, for logs</td></tr>
+<tr><td><code>X-Forwarded-For</code>, <code>-Proto</code>, <code>-Host</code></td><td>the client's address and original host</td></tr>
+</table>
+<div class="note"><p>Your services never see the token unless you list <code>authorization</code> in a route's <code>headers.add</code>. They trust the gateway's user id header, so make sure nothing but the gateway can reach them.</p></div>
+
+<nav class="next" aria-label="Pages"><a href="configuration.html"><small>Previous</small><b>Service config</b></a><a class="fwd" href="rate-limiting.html"><small>Next</small><b>Rate limiting</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

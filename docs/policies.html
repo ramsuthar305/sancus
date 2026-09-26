@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policies · Sancus</title>
+<meta name="description" content="Write a rule once as a small module, reference it from YAML on any service or route.">
+<meta property="og:title" content="Policies · Sancus">
+<meta property="og:description" content="Write a rule once as a small module, reference it from YAML on any service or route.">
+<meta property="og:image" content="assets/social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">Start here</div><a class="item" href="introduction.html"><span class="n"></span>Introduction</a><div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html" aria-current="page"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
+</nav>
+<main>
+
+<h1>Policies.</h1>
+<p class="lede">A policy is a named middleware you configure from YAML. Sancus ships one, <code>ip-restriction</code>. You write the rest as files in <code>policies/</code>, and reference them by name on a service or a route.</p><div class="scene"><time>Month three</time><p>Finance asked that every bulk import carry an idempotency key, so a double click never imports a file twice. The platform team wrote the rule once, in eight lines. The import route got two lines of YAML.</p></div>
+
+<h2>Using one</h2>
+<pre><code class="language-yaml">service:
+  name: admin
+  nodes: [http://admin:8080]
+  policies:
+    ip-restriction: { allow: [10.0.0.0/8, 203.0.113.7], deny: [] }
+apis:
+  - name: Imports
+    routes:
+      - path: /v1/import
+        methods: [POST]
+        policies:
+          require-header: { header: X-Idempotency-Key }</code></pre>
+<p>Service policies run first, then route policies, each set in priority order. A policy that answers the request ends it there. Sancus validates the config against the policy's schema when the file loads, so a typo is a startup error rather than a runtime surprise.</p>
+
+<h2>Writing one</h2>
+<pre><code class="language-javascript">// policies/require-header.js
+module.exports = {
+  name: &#x27;require-header&#x27;,
+  priority: 10,             // higher runs first
+  schema: { type: &#x27;object&#x27;, required: [&#x27;header&#x27;], properties: { header: { type: &#x27;string&#x27; } } },
+  create: ({ header }) =&gt; (req, res, next) =&gt;
+    req.headers[header.toLowerCase()] ? next() : res.status(400).json({ message: `missing ${{header}}` }),
+};</code></pre>
+<p><code>create</code> receives the config from YAML and returns an Express middleware. Anything Express can do, a policy can do: read headers, set headers, reject, redirect, call another service. The module can also export an array of policies.</p>
+
+<h2>ip-restriction</h2>
+<p><code>allow</code> and <code>deny</code> take addresses or CIDR ranges. Deny wins. A non-empty allow list rejects anything not on it. Matching uses Node's built-in BlockList, so IPv6 works.</p>
+
+<h2>Ideas</h2>
+<ul>
+<li>A maintenance switch that answers 503 for one service while you deploy it.</li>
+<li>A header that must match a tenant id from the auth response, forwarded via <code>AUTH_UPSTREAM_HEADERS</code>.</li>
+<li>A canary that sends one request in ten to a different node list.</li>
+<li>A body size cap on upload routes.</li>
+</ul>
+<p><code>/routes</code> lists the policies that are loaded.</p>
+
+<nav class="next" aria-label="Pages"><a href="resilience.html"><small>Previous</small><b>Upstreams and failure</b></a><a class="fwd" href="operations.html"><small>Next</small><b>Running in production</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

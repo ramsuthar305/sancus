@@ -131,3 +131,7 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+tests/bench/results/
+
+# image generation prompts stay local
+docs/assets/*PROMPT*.md

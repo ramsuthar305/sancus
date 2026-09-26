@@ -1,0 +1,20 @@
+# Everything on this service needs a valid token (no AUTH bypass). Geo-fence is off in the demo
+# (empty in.json), so GEO_FENCE bypasses are omitted on purpose.
+service:
+  name: users
+  host: USERS_URL            # env var with the upstream base URL (see docker-compose.yml / run-local.sh)
+  timeout: 5000
+  headers:
+    add: { X-Gateway: sancus-demo }
+
+apis:
+  - name: Profile
+    description: Who am I, as the upstream sees it
+    routes:
+      - path: /profile
+        methods: [GET]
+        rateLimit: { perMinute: 60, key: USER }
+      - path: /orders
+        methods: [GET, POST]
+        rateLimit: { perMinute: 30, key: USER }
+        cache: { strategy: LRU, ttl: 30, key: PATH_QUERY_USER, browserTtl: 10 }   # private per-user cache

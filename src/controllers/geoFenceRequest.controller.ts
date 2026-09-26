@@ -2,9 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import GeoUtils from '../utils/geoFenceUtil';
 import SancusResponse from '../utils/responseUtil';
 import ResponseEnum from '../types/responseEnums';
+import getLogger from '../configs/logger';
+
+const logger = getLogger();
 
 class GeoFenceRequestController {
-    private geoUtils = GeoUtils.getInstance('./in.json');
+    private geoUtils = GeoUtils.getInstance(process.env.GEOFENCE_FILE || './in.json');
 
     constructor() {
         this.geoFence = this.geoFence.bind(this);
@@ -15,6 +18,10 @@ class GeoFenceRequestController {
         res: Response,
         next: NextFunction
     ): Promise<Response | void> {
+        if (!this.geoUtils.enabled) {
+            new SancusResponse(ResponseEnum.ALLOWED_TERRITORY, {}, res);
+            return;
+        }
         const coordinates = req.header('X-COORDINATES');
 
         if (!coordinates) {
@@ -38,7 +45,7 @@ class GeoFenceRequestController {
                 new SancusResponse(ResponseEnum.ALLOWED_TERRITORY, {}, res);
             })
             .catch(err => {
-                console.error('Error finding state:', err);
+                logger.error({ err }, 'Error finding state');
                 new SancusResponse(ResponseEnum.INTERNAL_SERVER_ERROR, {}, res);
             });
     }

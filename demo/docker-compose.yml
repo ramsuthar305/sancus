@@ -1,0 +1,48 @@
+# The whole demo platform: gateway + Redis + auth + users + two catalog replicas.
+#   cd demo && docker compose up --build
+#   ./tour.sh
+services:
+  sancus:
+    build: ..
+    ports: ["3000:3000"]
+    environment:
+      LOG_LEVEL: info
+      CONFIG_WATCH: "true"
+      REDIS_URL: redis://redis:6379
+      AUTH_URL: http://auth:8001
+      AUTH_UPSTREAM_HEADERS: x-user-role
+      AUTH_CLIENT_HEADERS: www-authenticate
+      USERS_URL: http://users:8010
+      CATALOG_A_URL: http://catalog-a:8020
+      CATALOG_B_URL: http://catalog-b:8021
+      ADMIN_TOKEN: demo
+      ALLOWED_ORIGINS: http://localhost:5173
+      POLICIES_DIR: /app/policies
+    volumes:
+      - ./api_configs:/app/api_configs
+      - ./policies:/app/policies:ro
+    depends_on:
+      redis: { condition: service_healthy }
+      auth: { condition: service_started }
+  redis:
+    image: redis:7-alpine
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 2s, retries: 10 }
+  auth:
+    image: node:22-slim
+    command: node /srv/auth.js
+    volumes: ["./services:/srv:ro"]
+  users:
+    image: node:22-slim
+    command: node /srv/users.js
+    environment: { PORT: "8010" }
+    volumes: ["./services:/srv:ro"]
+  catalog-a:
+    image: node:22-slim
+    command: node /srv/catalog.js
+    environment: { PORT: "8020", REPLICA: a }
+    volumes: ["./services:/srv:ro"]
+  catalog-b:
+    image: node:22-slim
+    command: node /srv/catalog.js
+    environment: { PORT: "8021", REPLICA: b }
+    volumes: ["./services:/srv:ro"]

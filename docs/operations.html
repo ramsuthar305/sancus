@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running in production · Sancus</title>
+<meta name="description" content="Health, metrics, logs, shutdown, trust proxy, and the Kubernetes manifests.">
+<meta property="og:title" content="Running in production · Sancus">
+<meta property="og:description" content="Health, metrics, logs, shutdown, trust proxy, and the Kubernetes manifests.">
+<meta property="og:image" content="assets/social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">Start here</div><a class="item" href="introduction.html"><span class="n"></span>Introduction</a><div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html" aria-current="page"><span class="n"></span>Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
+</nav>
+<main>
+
+<h1>Running in production.</h1>
+<p class="lede">Sancus tells you when it is ready, exposes Prometheus metrics, logs one JSON line per request with a request id, and drains cleanly on SIGTERM.</p><div class="scene"><time>The first real deploy</time><p>Kettle rolled out a new gateway version at lunch, the busiest hour. Kubernetes stopped sending traffic to each old pod as its readiness turned 503, the pod finished the requests it had, and exited. The error graph did not move.</p></div>
+
+<h2>Endpoints</h2>
+<table>
+<tr><th>Endpoint</th><th>Purpose</th></tr>
+<tr><td><code>GET /health</code></td><td>Liveness. 200 while the process runs.</td></tr>
+<tr><td><code>GET /health/ready</code></td><td>Readiness. 503 until the config is loaded, and during shutdown. Reports Redis as <code>DEGRADED</code> without failing. Point your readiness probe here.</td></tr>
+<tr><td><code>GET /metrics</code></td><td>Prometheus text</td></tr>
+<tr><td><code>GET /routes</code></td><td>Loaded services, routes and policies</td></tr>
+<tr><td><code>DELETE /cache/:service</code></td><td>Purge the response cache for one service</td></tr>
+</table>
+<p>Set <code>ADMIN_TOKEN</code> and the last three require <code>Authorization: Bearer &lt;token&gt;</code>. The health endpoints stay open for probes.</p>
+
+<h2>Metrics</h2>
+<table>
+<tr><th>Metric</th><th>Labels</th><th>Meaning</th></tr>
+<tr><td><code>sancus_http_requests_total</code></td><td>service, route, method, code</td><td>every request the gateway answered</td></tr>
+<tr><td><code>sancus_http_request_duration_seconds</code></td><td>same</td><td>total time, histogram</td></tr>
+<tr><td><code>sancus_upstream_duration_seconds</code></td><td>same</td><td>time waiting for the upstream's headers</td></tr>
+<tr><td><code>sancus_upstream_up</code></td><td>service, node</td><td>1 while the node is considered healthy</td></tr>
+<tr><td><code>sancus_cache_events_total</code></td><td>service, status</td><td>HIT, MISS, STALE, BYPASS counts</td></tr>
+<tr><td><code>sancus_rate_limited_total</code></td><td>service, route, scope</td><td>429s, by route or the IP limiter</td></tr>
+<tr><td><code>sancus_config_reloads_total</code></td><td>status</td><td>hot reloads that succeeded or failed</td></tr>
+</table>
+<p>Plus the Node runtime metrics prom-client ships: heap, event loop lag, GC.</p>
+
+<h2>Logs</h2>
+<p>One JSON line per request from pino, with <code>requestId</code>, method, URL, status and response time. Every other log line inside that request carries the same id. <code>authorization</code>, <code>cookie</code> and <code>set-cookie</code> are masked; add to the list with <code>LOG_HEADERS_REDACT</code>, or drop headers entirely with <code>LOG_HEADERS_DROP</code>. The access log at <code>info</code> costs about 20 percent of throughput; many teams run <code>LOG_LEVEL=warn</code> and rely on metrics.</p>
+
+<h2 id="trust-proxy">Trust proxy</h2>
+<p>Sancus learns the client's IP from <code>X-Forwarded-For</code> only when the direct peer is a proxy it trusts. The default, <code>loopback, linklocal, uniquelocal</code>, trusts private addresses, which is where an ingress or a cloud load balancer sits inside your network. A public client cannot forge the header, because its own address is not private.</p>
+<table>
+<tr><th>Value</th><th>Use when</th></tr>
+<tr><td>default</td><td>the balancer or ingress has a private IP</td></tr>
+<tr><td><code>1</code></td><td>exactly one proxy in front, wherever it is</td></tr>
+<tr><td><code>10.0.0.0/8, 173.245.48.0/20</code></td><td>proxies with public addresses, such as Cloudflare; list their ranges</td></tr>
+<tr><td><code>false</code></td><td>no proxy at all; refused while the IP limiter is on</td></tr>
+</table>
+
+<h2>Shutdown</h2>
+<p>On SIGTERM the readiness endpoint turns 503 and responses carry <code>Connection: close</code>, but Sancus keeps serving for <code>SHUTDOWN_DELAY_MS</code> (5 s). That gives Kubernetes or your load balancer time to stop routing to the pod, and keep-alive clients reconnect to a pod that is staying. Then the listener closes, in-flight requests finish within <code>SHUTDOWN_TIMEOUT_MS</code> (10 s), and the process exits. Keep <code>terminationGracePeriodSeconds</code> above the sum; the shipped Deployment uses 30.</p>
+<p>Tested on a kind cluster: two rolling restarts under steady load served 580,000 requests with zero errors and zero dropped connections.</p>
+
+<h2>Workers</h2>
+<p><code>WORKERS=4</code> forks four gateway processes sharing the port. Limits and the cache live in Redis, so workers do not disagree. The breaker and alert cooldowns are per worker. Use the pod's CPU limit as the count.</p>
+
+<h2>Kubernetes</h2>
+<pre><code class="language-bash">kubectl apply -k k8s/</code></pre>
+<p>The kustomize set has a namespace, a ConfigMap for settings, an example Secret for <code>REDIS_URL</code> and <code>ADMIN_TOKEN</code>, a Deployment with readiness on <code>/health/ready</code>, resource requests and limits, a non-root security context, a ClusterIP Service, an nginx Ingress with the ALB annotations in comments, an HPA on CPU, and a PodDisruptionBudget. You bring Redis and your upstream services.</p>
+<p>Service configs live in <code>k8s/api_configs/</code>. Kustomize turns them into the <code>sancus-api-configs</code> ConfigMap, mounted at <code>/app/api_configs</code>. Edit a file, run <code>kubectl apply -k k8s/</code> again, and running pods load it when the kubelet syncs the volume, 47 seconds in our test. A file that fails validation is refused and the old config keeps serving.</p>
+<p>Readiness checks that the config is loaded and the pod is not draining. It reports Redis but does not require it: with Redis down every Redis-backed feature fails open, so the pod stays in service and reconnects when Redis returns. Keep the load balancer idle timeout below <code>KEEP_ALIVE_TIMEOUT_MS</code>.</p>
+
+<h2>Alerts</h2>
+<p><code>ALERT_WEBHOOK_URL</code> takes a Slack or Discord incoming webhook. Sancus posts on upstream 5xx, proxy errors, rate-limit breaches, IP blocks, breaker opens and rejected config reloads, at most once per <code>ALERT_COOLDOWN_MS</code> per event. For anything beyond that, alert on the metrics.</p>
+
+<nav class="next" aria-label="Pages"><a href="policies.html"><small>Previous</small><b>Policies</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

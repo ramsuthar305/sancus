@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The practice run · Sancus</title>
+<meta name="description" content="A runnable mini platform and a seventeen-step tour through every Sancus feature.">
+<meta property="og:title" content="The practice run · Sancus">
+<meta property="og:description" content="A runnable mini platform and a seventeen-step tour through every Sancus feature.">
+<meta property="og:image" content="assets/social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">Start here</div><a class="item" href="introduction.html"><span class="n"></span>Introduction</a><div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html" aria-current="page"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
+</nav>
+<main>
+
+<h1>The practice run.</h1>
+<p class="lede">Before Kettle put Sancus in front of real customers, the team ran it against a fake platform on a laptop. That platform ships in <code>demo/</code>: an auth service, a users service, two copies of a catalog service, Redis, and a script that walks you through seventeen requests.</p>
+<figure><img data-asset src="assets/demo-platform.webp" alt="Sancus standing between a laptop and three small services, with Redis beside it" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<h2>Run it</h2>
+<pre><code class="language-bash">cd demo
+docker compose up --build
+./tour.sh          # in another terminal</code></pre>
+<p>Without Docker: <code>./demo/run-local.sh</code> from the repo root, with Node 18+ and a local Redis.</p>
+
+<h2>What the tour shows</h2>
+<table>
+<tr><th>Step</th><th>You send</th><th>You see</th></tr>
+<tr><td>Request ids</td><td>a request with <code>X-Request-Id: tour-0001</code></td><td>the same id in the response and in the upstream's echo</td></tr>
+<tr><td>Auth</td><td>no token, a bad token, a good one</td><td>401, the verifier's own 401 passed through, then 200 with the user id forwarded</td></tr>
+<tr><td>Cache</td><td>the same GET three times</td><td>MISS, HIT with Age and ETag, then 304</td></tr>
+<tr><td>Stale-while-revalidate</td><td>a GET after the entry aged</td><td>STALE served at once, HIT with fresh data next</td></tr>
+<tr><td>Rate limit</td><td>six calls on a 5-a-minute route</td><td>X-RateLimit-Remaining counting down, then 429 with Retry-After</td></tr>
+<tr><td>Replicas</td><td>four uncached GETs</td><td>servedBy alternating between the two catalog copies</td></tr>
+<tr><td>Timeout</td><td>a route that takes 2.5 s on a 1.5 s limit</td><td>504 after 1.5 s</td></tr>
+<tr><td>Streaming</td><td>an SSE route</td><td>five events with timestamps 400 ms apart</td></tr>
+<tr><td>Policies</td><td>a POST without a header</td><td>400 from a policy you can read in eight lines</td></tr>
+<tr><td>Breaker</td><td>a route that always fails</td><td>500s, then 503 from the gateway with Retry-After</td></tr>
+<tr><td>Hot reload</td><td>a new YAML file dropped in</td><td>the new service answers; a broken file is rejected and the old config stays</td></tr>
+</table>
+<p>Keep the service logs open while you go. The auth log shows one call per token, the catalog logs show which requests never reached the service.</p>
+
+<h2>After the tour</h2>
+<ul>
+<li>Change a TTL in <code>demo/api_configs/catalog.yml</code> and save. The next request uses it.</li>
+<li>Stop <code>catalog-b</code> and call the replicas route. The first call retries onto <code>catalog-a</code>, then b is skipped for thirty seconds.</li>
+<li>Copy <code>demo/policies/require-header.js</code>, rename it, and reference it from a route.</li>
+</ul>
+
+<nav class="next" aria-label="Pages"><a href="benchmarks.html"><small>Previous</small><b>How fast it is</b></a><a class="fwd" href="configuration.html"><small>Next</small><b>Service config</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

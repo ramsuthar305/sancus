@@ -1,0 +1,19 @@
+# kubectl apply -k k8s/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+configMapGenerator:
+  - name: sancus-api-configs
+    namespace: sancus
+    files:
+      - api_configs/your_service_name.yml   # add one line per service file
+    options:
+      disableNameSuffixHash: true           # stable name, so edits reload in place

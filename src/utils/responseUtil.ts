@@ -14,7 +14,10 @@ const ResponseEnumDetails: { [key in ResponseEnum]: ResponseDetails } = {
     [ResponseEnum.BANNED_TERRITORY]: { statusCode: 400, message: 'Request from banned territory', responseCode: 'SE0405' }, // New response code for banned territory
     [ResponseEnum.ALLOWED_TERRITORY]: { statusCode: 200, message: 'Allowed territory', responseCode: 'SS0200' }, // New response code for banned territory
     [ResponseEnum.COORDINATES_MISSING]: { statusCode: 400, message: 'Missing coordinates', responseCode: 'SE0406' }, // New response code for missing coordinates
-    [ResponseEnum.INVALID_COORDINATES]: { statusCode: 400, message: 'Invalid Coordinates', responseCode: 'SE0407' } // New response code for invalid coordinates
+    [ResponseEnum.INVALID_COORDINATES]: { statusCode: 400, message: 'Invalid Coordinates', responseCode: 'SE0407' }, // New response code for invalid coordinates
+    [ResponseEnum.INVALID_SERVICE_NAME]: { statusCode: 400, message: 'Invalid service name or URL structure', responseCode: 'SE0408' },
+    [ResponseEnum.METHOD_NOT_ALLOWED]: { statusCode: 405, message: 'Method not allowed', responseCode: 'SE0410' },
+    [ResponseEnum.SERVICE_UNAVAILABLE]: { statusCode: 503, message: 'Upstream unavailable', responseCode: 'SE0503' }
 };
 
 class SancusResponse {

@@ -1,36 +1,49 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sancus-deployment
-  namespace: # your stage namespace
+  name: sancus
+  namespace: sancus
+  labels: { app.kubernetes.io/name: sancus }
 spec:
-  replicas: 1
+  replicas: 2
   selector:
-    matchLabels:
-      app.kubernetes.io/name: sancus
+    matchLabels: { app.kubernetes.io/name: sancus }
   template:
     metadata:
-      labels:
-        app.kubernetes.io/name: sancus
+      labels: { app.kubernetes.io/name: sancus }
     spec:
+      terminationGracePeriodSeconds: 30   # > SHUTDOWN_DELAY_MS + SHUTDOWN_TIMEOUT_MS (5 s + 10 s)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
       containers:
         - name: sancus
-          image: # Updated with placeholder
-          envFrom:
-            - configMapRef:
-                name: sancus-env
-          imagePullPolicy: Always
+          image: ghcr.io/ramsuthar305/sancus:2.0.0
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 3000
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef: { name: sancus-env }
+            - secretRef: { name: sancus-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
           livenessProbe:
-            httpGet:
-              path: /health
-              port: 3000
-            initialDelaySeconds: 10
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /health
-              port: 3000
-            initialDelaySeconds: 13
-            periodSeconds: 10
+            httpGet: { path: /health/ready, port: http }   # 503 until config + Redis are up, and during shutdown
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # multipart uploads are staged under /app/uploads
+          # Service configs come from the sancus-api-configs ConfigMap (k8s/api_configs/*.yml).
+          # Edit a file, re-apply, and running pods reload it within about a minute.
+          volumeMounts:
+            - { name: api-configs, mountPath: /app/api_configs, readOnly: true }
+      volumes:
+        - name: api-configs
+          configMap: { name: sancus-api-configs }

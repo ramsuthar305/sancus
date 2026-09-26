@@ -1,46 +1,33 @@
-// import 'newrelic';
-import bodyParser from 'body-parser';
-import express, { Express, Request, Response } from 'express';
-import httpContext from 'express-http-context';
-import path from 'path';
+import cluster from 'cluster';
 import getLogger from './configs/logger';
-import { correlationMiddleware, requestFlowLogger } from './middlewares/requestLogger';
-import APIConfigValidator from './utils/configValidator';
-import CommonRequestRoute from './routes/commonRequest.route';
-import GeoFenceRoute from './routes/geoFenceRequest.route';
-import { createProxyServer } from 'http-proxy';
 
+/**
+ * Entry point. WORKERS=<n> (default 1) forks n gateway processes sharing the port; each worker is
+ * a full gateway (Redis-backed limits and cache stay consistent across workers). The primary only
+ * supervises: it respawns crashed workers and forwards SIGTERM so every worker drains gracefully.
+ */
+const workers = Number(process.env.WORKERS) || 1;
 
-const apiConfigValidator = new APIConfigValidator(
-  path.join(__dirname, '..', 'api_configs')
-);
-apiConfigValidator.validateAllFiles();
-
-const app: Express = express();
-const proxy = createProxyServer();
-const port = 3000;
-
-app.use(bodyParser.urlencoded({ extended: false }));
-
-// parse application/json
-app.use(bodyParser.json());
-app.use(correlationMiddleware);
-app.use(requestFlowLogger);
-app.use(httpContext.middleware);
-
-
-app.use((req: Request, res: Response, next: Function) => {
-  httpContext.set('headers', req.headers);
-  next();
-});
-
-app.get('/health', (req: Request, res: Response) => {
-  res.status(200).json({ status: 'UP' });
-});
-app.use('/api/geo', GeoFenceRoute);
-app.use('/api/*', CommonRequestRoute);
-
-app.listen(port, () => {
+if (workers > 1 && cluster.isPrimary) {
   const logger = getLogger();
-  logger.info(`⚡️[server]: Server is running at http://localhost:${port}`);
-});
+  let shuttingDown = false;
+  for (let i = 0; i < workers; i++) cluster.fork();
+  cluster.on('exit', (worker, code, signal) => {
+    if (shuttingDown) {
+      if (Object.keys(cluster.workers ?? {}).length === 0) process.exit(0);
+      return;
+    }
+    logger.error({ pid: worker.process.pid, code, signal }, 'worker died, respawning');
+    cluster.fork();
+  });
+  const shutdown = () => {
+    shuttingDown = true;
+    for (const w of Object.values(cluster.workers ?? {})) w?.process.kill('SIGTERM');
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+  logger.info({ workers }, 'Sancus primary started');
+} else {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  require('./server');
+}

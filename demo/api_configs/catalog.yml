@@ -1,0 +1,64 @@
+# Public catalog: two replicas, round-robin with passive health, retries, a circuit breaker,
+# shared rate-limit group, SWR cache, a custom policy and an IP restriction.
+service:
+  name: catalog
+  nodes:
+    - "${CATALOG_A_URL:-http://127.0.0.1:8020}"
+    - "${CATALOG_B_URL:-http://127.0.0.1:8021}"
+  retries: 1                                   # GET/HEAD only, on connection errors -> next node
+  timeout: 1500                                # /slow takes 2.5s and will 504
+  circuitBreaker: { volumeThreshold: 3, errorThresholdPercentage: 25, resetTimeout: 15000 }   # opens when >25% of the last 10s failed
+  headers:
+    remove: [cookie]                           # never leak browser cookies to a public catalog
+
+apis:
+  - name: Products
+    description: Public, cached, rate limited as a group
+    routes:
+      - path: /products
+        methods: [GET]
+        bypass: [AUTH]
+        rateLimit: { perMinute: 20, group: catalog-public }
+        cache: { strategy: SWR, ttl: 8, key: PATH, browserTtl: 5 }        # stale after 6s, refreshed in background
+      - path: /products/{int:id}
+        methods: [GET]
+        bypass: [AUTH]
+        rateLimit: { perMinute: 20, group: catalog-public }
+        cache: { strategy: LRU, ttl: 60, key: PATH }
+      - path: /inventory                                                    # not cached: rate limit counts every call
+        methods: [GET]
+        bypass: [AUTH]
+        rateLimit: { perMinute: 5, group: inventory }
+      - path: /inventory/{int:id}
+        methods: [GET]
+        bypass: [AUTH]
+        rateLimit: { perMinute: 5, group: inventory }
+      - path: /search
+        methods: [GET]
+        bypass: [AUTH]
+        cache: { strategy: LFU, ttl: 60, key: PATH_QUERY, varyHeaders: [Accept-Language] }
+      - path: /private-data
+        methods: [GET]
+        bypass: [AUTH]
+        cache: { strategy: LRU, ttl: 60, key: PATH }                        # upstream says no-store -> BYPASS
+
+  - name: Resilience
+    description: Things that go wrong, handled at the edge
+    routes:
+      - { path: /slow,   methods: [GET], bypass: [AUTH] }
+      - { path: /flaky,  methods: [GET], bypass: [AUTH] }
+      - { path: /events, methods: [GET], bypass: [AUTH] }                   # SSE passthrough
+
+  - name: Policies
+    description: Named policies from YAML
+    routes:
+      - path: /admin/stats
+        methods: [GET]
+        bypass: [AUTH]
+        policies:
+          ip-restriction: { allow: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] }
+      - path: /orders
+        methods: [POST]
+        bypass: [AUTH]
+        policies:
+          require-header: { header: X-Idempotency-Key }                    # custom policy in demo/policies/

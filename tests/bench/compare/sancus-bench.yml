@@ -1,0 +1,2 @@
+service: { name: bench, nodes: [http://upstream:80] }
+apis: [{ name: b, routes: [{ path: /echo, methods: [GET], bypass: [AUTH, GEO_FENCE] }] }]

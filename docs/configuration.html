@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service config · Sancus</title>
+<meta name="description" content="Every field of a Sancus service file, with defaults, plus the environment variables.">
+<meta property="og:title" content="Service config · Sancus">
+<meta property="og:description" content="Every field of a Sancus service file, with defaults, plus the environment variables.">
+<meta property="og:image" content="assets/social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">Start here</div><a class="item" href="introduction.html"><span class="n"></span>Introduction</a><div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html" aria-current="page"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
+</nav>
+<main>
+
+<h1>Service config.</h1>
+<p class="lede">One YAML file per service in <code>api_configs/</code>. Sancus validates it against a JSON Schema at start and on every change. <code>npm run check</code> validates without starting.</p><div class="scene"><time>Kettle, week three</time><p>The api_configs folder has three files now: menu.yml, orders.yml and search.yml. The team reviews them like code, because they are. This page lists every field those files can use.</p></div>
+
+<h2>A full file</h2>
+<pre><code class="language-yaml">service:
+  name: users                       # URL prefix: /api/users/...
+  nodes: [http://users-a:8080, http://users-b:8080]
+  # host: USERS_URL                 # older form: env var with the base URL, plus port:
+  hosts: [api.example.com]          # optional Host allow-list
+  rewrite: { from: &quot;^/v1&quot;, to: &quot;&quot; } # regex on the upstream path
+  timeout: 10000                    # ms waiting for upstream headers, default 60000
+  retries: 1                        # GET/HEAD/OPTIONS on connection errors, default 0
+  circuitBreaker: { errorThresholdPercentage: 50, volumeThreshold: 10, resetTimeout: 30000 }
+  headers: { add: { X-Gateway: sancus }, remove: [Cookie] }
+  policies:
+    ip-restriction: { allow: [10.0.0.0/8] }
+
+apis:
+  - name: Users
+    routes:
+      - path: /v1/users/{int:id}
+        methods: [GET, PATCH]
+      - path: /v1/public/search
+        methods: [GET]
+        bypass: [AUTH, GEO_FENCE]
+        resolveUser: true
+        rateLimit: { perMinute: 120, perDay: 5000, key: USER_OR_IP, group: search, hideHeaders: false }
+        cache: { strategy: SWR, ttl: 300, key: PATH_QUERY, browserTtl: 60, varyHeaders: [Accept-Language], statusCodes: [200, 404] }
+        headers: { add: { X-Route: search } }
+        policies:
+          require-header: { header: X-Client }</code></pre>
+<p><code>${VAR}</code> and <code>${VAR:-default}</code> anywhere in the file are replaced from the environment before parsing. That is how the demo uses one file for local and Docker node lists.</p>
+
+<h2>service</h2>
+<table>
+<tr><th>Field</th><th>Default</th><th>What it does</th></tr>
+<tr><td><code>name</code></td><td>required</td><td>Letters, digits, <code>_</code>, <code>-</code>. Becomes the first path segment after <code>/api/</code>.</td></tr>
+<tr><td><code>nodes</code></td><td></td><td>Upstream base URLs. Round-robin. A node that refuses connections is skipped for <code>UPSTREAM_UNHEALTHY_TTL_MS</code>.</td></tr>
+<tr><td><code>host</code>, <code>port</code></td><td></td><td>The older single-upstream form. <code>host</code> names an environment variable holding the base URL. Use <code>nodes</code> for new files.</td></tr>
+<tr><td><code>hosts</code></td><td>any</td><td>Only requests whose <code>Host</code> header is in the list reach this service. Others get 404.</td></tr>
+<tr><td><code>rewrite</code></td><td>none</td><td>A regex and replacement applied to the path after <code>/api/&lt;name&gt;</code> is stripped.</td></tr>
+<tr><td><code>timeout</code></td><td>60000</td><td>Milliseconds to wait for upstream response headers. Then 504.</td></tr>
+<tr><td><code>retries</code></td><td>0</td><td>Extra attempts on connection errors, idempotent methods only, next node each time.</td></tr>
+<tr><td><code>circuitBreaker</code></td><td>off</td><td>Opens when at least <code>volumeThreshold</code> calls in the last ten seconds had more than <code>errorThresholdPercentage</code> failures. Stays open <code>resetTimeout</code> ms, then tries one request.</td></tr>
+<tr><td><code>headers</code></td><td>none</td><td>Request headers to add or remove before proxying. Route-level rules apply after service-level.</td></tr>
+<tr><td><code>policies</code></td><td>none</td><td>Named policies with their config. See <a href="policies.html">policies</a>.</td></tr>
+</table>
+
+<h2>routes</h2>
+<table>
+<tr><th>Field</th><th>Default</th><th>What it does</th></tr>
+<tr><td><code>path</code></td><td>required</td><td>Starts with <code>/</code>. Parameters look like <code>{int:id}</code> or <code>{str:slug}</code>. Exact paths beat parameterised ones.</td></tr>
+<tr><td><code>methods</code></td><td>required</td><td>One or more of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS. HEAD is implied by GET.</td></tr>
+<tr><td><code>bypass</code></td><td>none</td><td><code>AUTH</code> makes the route public. <code>GEO_FENCE</code> skips the coordinate check.</td></tr>
+<tr><td><code>resolveUser</code></td><td>false</td><td>On a public route, still identify the user when a token is present.</td></tr>
+<tr><td><code>rateLimit</code></td><td>none</td><td>See <a href="rate-limiting.html">rate limiting</a>.</td></tr>
+<tr><td><code>cache</code></td><td>none</td><td>See <a href="caching.html">caching</a>.</td></tr>
+<tr><td><code>headers</code>, <code>policies</code></td><td>none</td><td>Same as on the service, for this route only.</td></tr>
+</table>
+
+<h2>Environment variables</h2>
+<table>
+<tr><th>Variable</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>PORT</code>, <code>HOST</code></td><td>3000, 0.0.0.0</td><td>Listen address</td></tr>
+<tr><td><code>WORKERS</code></td><td>1</td><td>Gateway processes sharing the port. Use the pod's core count.</td></tr>
+<tr><td><code>CONFIG_DIR</code>, <code>CONFIG_WATCH</code></td><td>./api_configs, true</td><td>Where the YAML lives, and whether to reload on change</td></tr>
+<tr><td><code>POLICIES_DIR</code></td><td>./policies</td><td>Custom policy modules</td></tr>
+<tr><td><code>TRUST_PROXY</code></td><td>loopback, linklocal, uniquelocal</td><td>Which peers may set X-Forwarded-For. See <a href="operations.html#trust-proxy">running in production</a>.</td></tr>
+<tr><td><code>REDIS_URL</code></td><td>redis://127.0.0.1:6379</td><td>Token cache, rate limits, response cache. Without it those features fail open.</td></tr>
+<tr><td><code>ALLOWED_ORIGINS</code></td><td>http://localhost:5173</td><td>CORS origins, comma-separated, <code>/regex/</code> allowed</td></tr>
+<tr><td><code>AUTH_*</code></td><td></td><td>See <a href="auth.html">authentication</a></td></tr>
+<tr><td><code>IP_RATE_LIMIT_ENABLED</code>, <code>IP_RATE_LIMIT_CAPACITY</code>, <code>IP_RATE_LIMIT_REFILL_RATE</code></td><td>true, 200, 5</td><td>Global per-IP bucket</td></tr>
+<tr><td><code>IP_BLOCK_THRESHOLD</code>, <code>IP_BLOCK_WINDOW_MS</code>, <code>IP_BLOCK_DURATION_MS</code></td><td>20, 60000, 900000</td><td>Block an IP after N 429s in the window, for the duration</td></tr>
+<tr><td><code>TRUSTED_IPS</code></td><td></td><td>IPs that skip both limiters</td></tr>
+<tr><td><code>UPSTREAM_TIMEOUT_MS</code>, <code>UPSTREAM_UNHEALTHY_TTL_MS</code>, <code>UPSTREAM_MAX_SOCKETS</code></td><td>60000, 30000, 256</td><td>Default timeout, how long a failed node is skipped, keep-alive pool per worker</td></tr>
+<tr><td><code>CACHE_LFU_MAX_ENTRIES</code></td><td>1000</td><td>LFU eviction bound</td></tr>
+<tr><td><code>KEEP_ALIVE_TIMEOUT_MS</code></td><td>125000</td><td>Must exceed your load balancer's idle timeout</td></tr>
+<tr><td><code>SHUTDOWN_TIMEOUT_MS</code></td><td>10000</td><td>Drain window on SIGTERM</td></tr>
+<tr><td><code>LOG_LEVEL</code>, <code>LOG_HEADERS_REDACT</code>, <code>LOG_HEADERS_DROP</code></td><td>info, authorization,cookie,set-cookie, none</td><td>Log level; headers masked or removed from access logs</td></tr>
+<tr><td><code>ALERT_WEBHOOK_URL</code>, <code>ALERT_COOLDOWN_MS</code></td><td>none, 60000</td><td>Slack or Discord webhook for 5xx, proxy errors, limit breaches, breaker events</td></tr>
+<tr><td><code>ADMIN_TOKEN</code></td><td>none</td><td>Protects <code>/metrics</code>, <code>/routes</code>, <code>/cache</code></td></tr>
+<tr><td><code>GEOFENCE_FILE</code></td><td>./in.json</td><td>GeoJSON of banned polygons. Empty means off.</td></tr>
+</table>
+
+<nav class="next" aria-label="Pages"><a href="demo.html"><small>Previous</small><b>The practice run</b></a><a class="fwd" href="auth.html"><small>Next</small><b>Authentication</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

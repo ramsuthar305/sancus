@@ -37,7 +37,8 @@ class UrlUtils {
             paramRegexPattern = '\\d+';
             break;
           case 'str':
-            paramRegexPattern = '[a-zA-Z0-9\\-.@#]+';
+            // Allow underscores, colons, and other common characters in string params (e.g., "stays_list", "hotel_expert_chat", "tour_live_data:6815a2fee8ab27cae1a48e6a")
+            paramRegexPattern = '[a-zA-Z0-9_\\-.@#:]+';
             break;
           default:
             paramRegexPattern = '\\w+';

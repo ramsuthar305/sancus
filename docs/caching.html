@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caching · Sancus</title>
+<meta name="description" content="Per-route response cache in Redis with LRU, LFU and stale-while-revalidate, standard headers and 304 support.">
+<meta property="og:title" content="Caching · Sancus">
+<meta property="og:description" content="Per-route response cache in Redis with LRU, LFU and stale-while-revalidate, standard headers and 304 support.">
+<meta property="og:image" content="assets/social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">Start here</div><a class="item" href="introduction.html"><span class="n"></span>Introduction</a><div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html" aria-current="page"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
+</nav>
+<main>
+
+<h1>Caching.</h1>
+<p class="lede">Add a <code>cache</code> block to a GET route and Sancus stores the response in Redis. Hits skip auth, rate limits and the upstream. The headers are the ones every CDN uses, so your clients and your monitoring already understand them.</p><div class="scene"><time>Dinner time, week two</time><p>Search took 900 ms per query and got 400 queries a second, most of them repeats. The team had a Redis cache inside search, written in a hurry, keyed on the wrong thing, and never invalidated.</p></div><div class="pair"><div><div class="tag before">Before, in search</div><pre><code class="language-javascript">const hit = await redis.get(&#x27;nearby:&#x27; + req.query.area);
+if (hit) return res.json(JSON.parse(hit));
+const rows = await slowNearbyQuery(req.query);
+await redis.set(&#x27;nearby:&#x27; + req.query.area,
+  JSON.stringify(rows), &#x27;EX&#x27;, 120);
+res.json(rows);   // forgot language, forgot ETag</code></pre></div><div><div class="tag after">After, in search.yml</div><pre><code class="language-yaml">- path: /v1/nearby
+  methods: [GET]
+  bypass: [AUTH]
+  cache:
+    strategy: SWR
+    ttl: 120
+    key: PATH_QUERY
+    varyHeaders: [Accept-Language]</code></pre></div></div>
+
+<h2>Config</h2>
+<pre><code class="language-yaml">cache:
+  strategy: SWR              # LRU | LFU | SWR
+  ttl: 300                   # seconds in Redis
+  key: PATH_QUERY            # PATH | PATH_QUERY | PATH_QUERY_USER
+  browserTtl: 60             # optional: emits Cache-Control to clients
+  varyHeaders: [Accept-Language]
+  statusCodes: [200, 404]    # default 200, 301, 404</code></pre>
+<table>
+<tr><th>Strategy</th><th>Behaviour</th></tr>
+<tr><td><code>LRU</code></td><td>Plain TTL. Redis evicts old entries under memory pressure.</td></tr>
+<tr><td><code>LFU</code></td><td>Tracks how often each entry is read and evicts the least-read ones past <code>CACHE_LFU_MAX_ENTRIES</code>.</td></tr>
+<tr><td><code>SWR</code></td><td>Stale-while-revalidate. In the last quarter of the TTL an entry is served at once as <code>STALE</code> and refreshed in the background. Users never wait for the refresh.</td></tr>
+</table>
+<table>
+<tr><th>Key</th><th>One entry per</th></tr>
+<tr><td><code>PATH</code></td><td>path</td></tr>
+<tr><td><code>PATH_QUERY</code></td><td>path and query string</td></tr>
+<tr><td><code>PATH_QUERY_USER</code></td><td>path, query and user id. Responses are marked <code>private</code> and <code>Vary: Authorization</code>.</td></tr>
+</table>
+
+<h2>What gets stored</h2>
+<p>Only GET and HEAD. Only the statuses in <code>statusCodes</code>. Never a response with <code>Cache-Control: no-store</code> or <code>private</code>, and never one with <code>Set-Cookie</code>. A request with <code>Cache-Control: no-cache</code> skips the lookup. Bodies are stored as bytes, so compressed responses come back intact.</p>
+
+<h2>Headers</h2>
+<table>
+<tr><th>Header</th><th>Meaning</th></tr>
+<tr><td><code>X-Cache-Status</code></td><td><code>HIT</code>, <code>MISS</code>, <code>STALE</code> (served stale, refreshing) or <code>BYPASS</code> (not cacheable)</td></tr>
+<tr><td><code>X-Cache-Key</code></td><td>a short hash of the key, to match requests to entries without leaking the key</td></tr>
+<tr><td><code>Age</code></td><td>seconds since the entry was stored</td></tr>
+<tr><td><code>ETag</code></td><td>a hash of the body; send it back as <code>If-None-Match</code> for a 304</td></tr>
+<tr><td><code>Cache-Control</code></td><td>only with <code>browserTtl</code>: <code>public, max-age=N</code>, or <code>private</code> for per-user keys, plus <code>stale-while-revalidate</code> for SWR</td></tr>
+<tr><td><code>Vary</code></td><td>the headers in <code>varyHeaders</code>, plus <code>Authorization</code> for per-user keys</td></tr>
+</table>
+
+<h2>Purging</h2>
+<pre><code class="language-bash">curl -X DELETE localhost:3000/cache/users -H &#x27;Authorization: Bearer $ADMIN_TOKEN&#x27;</code></pre>
+<p>Drops every entry for one service. There is no per-key purge; use a short TTL or SWR for data that changes often.</p>
+
+<h2>Choosing a TTL</h2>
+<p>Ask how stale is acceptable, not how often the data changes. A product list that updates hourly is fine at five minutes. A price is not. SWR is the safe default for anything users read a lot: the upstream sees one request per TTL, and users see fresh data one request later.</p>
+
+<nav class="next" aria-label="Pages"><a href="rate-limiting.html"><small>Previous</small><b>Rate limiting</b></a><a class="fwd" href="resilience.html"><small>Next</small><b>Upstreams and failure</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rate limiting · Sancus</title>
+<meta name="description" content="Two limiters, one global per IP and one per route, both in Redis with standard headers.">
+<meta property="og:title" content="Rate limiting · Sancus">
+<meta property="og:description" content="Two limiters, one global per IP and one per route, both in Redis with standard headers.">
+<meta property="og:image" content="assets/social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">Start here</div><a class="item" href="introduction.html"><span class="n"></span>Introduction</a><div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html" aria-current="page"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
+</nav>
+<main>
+
+<h1>Rate limiting.</h1>
+<p class="lede">Two limiters. A global per-IP token bucket protects the gateway from any single address. Per-route sliding windows protect your services from any single user, key or IP. Both count in Redis, so every gateway pod sees the same numbers.</p><div class="scene"><time>02:14, the first night</time><p>A partner's script sent 900 requests a second to orders, which had no limit. Three lines of YAML would have turned that into 429s at the door.</p></div><div class="pair"><div><div class="tag before">Before, in orders</div><pre><code class="language-javascript">import rateLimit from &#x27;express-rate-limit&#x27;;
+// memory store: each pod counts on its own,
+// so 4 pods = 4x the intended limit
+app.post(&#x27;/v1/orders&#x27;, rateLimit({
+  windowMs: 60_000, max: 30,
+  keyGenerator: (req) =&gt; req.user,
+}), createOrder);</code></pre></div><div><div class="tag after">After, in orders.yml</div><pre><code class="language-yaml">- path: /v1/orders
+  methods: [POST]
+  rateLimit: { perMinute: 30, key: USER }</code></pre></div></div>
+
+<h2>Per route</h2>
+<pre><code class="language-yaml">rateLimit:
+  perMinute: 120
+  perDay: 5000
+  key: USER_OR_IP     # IP | USER | API_KEY | USER_OR_IP | IP_USER
+  group: search       # optional: share one quota across routes with the same group
+  hideHeaders: false  # true: no X-RateLimit-* headers to the client</code></pre>
+<table>
+<tr><th>Key</th><th>Counts per</th></tr>
+<tr><td><code>IP</code></td><td>client address, as resolved by <code>TRUST_PROXY</code></td></tr>
+<tr><td><code>USER</code></td><td>the user id from auth; falls back to IP when anonymous</td></tr>
+<tr><td><code>API_KEY</code></td><td>the <code>X-API-Key</code> header; falls back to IP</td></tr>
+<tr><td><code>USER_OR_IP</code></td><td>user when logged in, IP otherwise</td></tr>
+<tr><td><code>IP_USER</code></td><td>the pair, so one user on two devices gets two quotas</td></tr>
+</table>
+<p>Each window is a sliding log in a Redis sorted set, run as one Lua script per window. The day window runs first, so a daily rejection does not consume a minute token.</p>
+
+<h2>Headers the client sees</h2>
+<table>
+<tr><th>Header</th><th>Example</th></tr>
+<tr><td><code>X-RateLimit-Limit</code>, <code>-Remaining</code>, <code>-Reset</code></td><td>120, 17, 42</td></tr>
+<tr><td><code>RateLimit-Limit</code>, <code>-Remaining</code>, <code>-Reset</code></td><td>120, 120;w=60 / 17 / 42</td></tr>
+<tr><td><code>Retry-After</code> on 429</td><td>42</td></tr>
+</table>
+<p>Both families, because clients written for Kong read one and clients written for Envoy read the other. Reset values are seconds until the window frees up. When two windows apply, the headers describe the tighter one.</p>
+
+<h2>The global IP bucket</h2>
+<p>Every request first passes a token bucket per client IP: <code>IP_RATE_LIMIT_CAPACITY</code> tokens (200), refilled at <code>IP_RATE_LIMIT_REFILL_RATE</code> a second (5). An address that gets 429 twenty times in a minute is blocked for fifteen minutes with a 403. Addresses in <code>TRUSTED_IPS</code> skip both limiters.</p>
+<div class="note bronze"><p>This limiter keys on the client IP. Behind a load balancer that IP comes from <code>X-Forwarded-For</code>, which Sancus only believes when <code>TRUST_PROXY</code> says the peer is a proxy. Get that wrong and every user shares one bucket. Sancus refuses to start with <code>TRUST_PROXY=false</code> while this limiter is on. Set <code>IP_RATE_LIMIT_ENABLED=false</code> if your balancer already does per-IP protection.</p></div>
+
+<h2>Order matters</h2>
+<p>A cache hit is answered before the rate limiter runs. A hit costs no upstream work, so it is not counted. Put limits on routes that are expensive, not on routes that are cached.</p>
+
+<h2>When Redis is down</h2>
+<p>Requests go through, with no rate-limit headers, and a warning in the log. A Redis outage should not take your API with it.</p>
+
+<nav class="next" aria-label="Pages"><a href="auth.html"><small>Previous</small><b>Authentication</b></a><a class="fwd" href="caching.html"><small>Next</small><b>Caching</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

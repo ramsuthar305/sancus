@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Three teams · Sancus</title>
+<meta name="description" content="Three teams, three problems, and the YAML each one wrote. Plus four cases where another gateway fits better.">
+<meta property="og:title" content="Three teams · Sancus">
+<meta property="og:description" content="Three teams, three problems, and the YAML each one wrote. Plus four cases where another gateway fits better.">
+<meta property="og:image" content="assets/social-card.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">Start here</div><a class="item" href="introduction.html"><span class="n"></span>Introduction</a><div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html" aria-current="page"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
+</nav>
+<main>
+
+<p class="chapter">Chapter 4</p>
+<h1>Three teams.</h1>
+<p class="lede">Kettle came to Sancus after a bad night. Two other teams came with different problems. Here is what each one had, what each one wrote, and what changed.</p>
+
+<h2>Kettle: search that kept timing out</h2>
+<figure><img data-asset src="assets/usecase-startup.webp" alt="Three people around a laptop with a gateway drawn on a whiteboard behind them" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<p>Two weeks after hour one, search slows down every evening. The query behind "restaurants near me" takes 900 ms, and at dinner time the service sees 400 of them a second. Most are the same forty neighbourhoods.</p>
+<pre><code class="language-yaml">- path: /v1/nearby
+  methods: [GET]
+  bypass: [AUTH]
+  cache: { strategy: SWR, ttl: 120, key: PATH_QUERY, varyHeaders: [Accept-Language] }</code></pre>
+<p>Search now sees one request per neighbourhood and language every two minutes. When an entry gets old, the next user still gets an instant answer marked <code>STALE</code>, and Sancus fetches a fresh one behind them. The 900 ms query is still slow. Nobody waits on it.</p>
+
+<h2>Tally: ten thousand phones asking the same thing</h2>
+<figure><img data-asset src="assets/usecase-mobile.webp" alt="A phone sending small lights toward a gate, most of them turning back at a small box before the gate" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<p>Tally is a habit-tracking app. Every phone asks for today's challenge when it opens, and again every minute while it stays open. The challenge changes once a day.</p>
+<pre><code class="language-yaml">- path: /v1/challenge/today
+  methods: [GET]
+  bypass: [AUTH]
+  cache: { strategy: LRU, ttl: 300, key: PATH, browserTtl: 60 }</code></pre>
+<p><code>browserTtl: 60</code> puts <code>Cache-Control: public, max-age=60</code> on the answer, so a phone stops asking for a minute. When it asks again it sends the ETag, and Sancus answers <span class="status ok">304</span> with no body. The challenge service went from thousands of requests a minute to one every five minutes. Tally also caps uploads at 20 a minute per user, which ended the one account that re-synced its whole history on every launch.</p>
+
+<h2>A platform team at a 200-person company</h2>
+<figure><img data-asset src="assets/usecase-internal.webp" alt="A long wall with five small doors and one large gate in the middle" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<p>Five product teams each ship a service. The platform team owns the gateway, the verifier and the policy folder. Each product team owns one file in <code>api_configs/</code> and changes it in their own pull requests. CI runs <code>npm run check</code>, so a bad file never merges.</p>
+<p>When finance asked that every import require an idempotency key, the platform team wrote an eight-line policy and the finance team added two lines to their route. <code>/routes</code> shows what is live. <code>/metrics</code> breaks requests down by service and route, so each team has its own dashboard without writing any code.</p>
+
+<h2>When another door fits better</h2>
+<table>
+<tr><th>You need</th><th>Look at</th><th>Because</th></tr>
+<tr><td>tens of thousands of requests a second on one gateway node</td><td>nginx-based gateways such as APISIX or Kong</td><td>Sancus runs on Node. Check <a href="benchmarks.html">its numbers</a> against your peak.</td></tr>
+<tr><td>JWT signature checks with no verifier service</td><td>Kong, Traefik, APISIX, KrakenD</td><td>Sancus asks a verifier. It does not check signatures itself.</td></tr>
+<tr><td>Kubernetes Gateway API resources</td><td>Envoy Gateway, Traefik</td><td>Sancus reads YAML files, not cluster objects.</td></tr>
+<tr><td>rewriting request and response bodies</td><td>KrakenD, APISIX</td><td>Sancus passes bodies through. A policy can do it, but nothing is built in.</td></tr>
+</table>
+
+<nav class="next" aria-label="Pages"><a href="how-it-works.html"><small>Previous</small><b>Follow one request</b></a><a class="fwd" href="benchmarks.html"><small>Next</small><b>How fast it is</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>
