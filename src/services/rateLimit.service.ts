@@ -1,16 +1,11 @@
 import type { Request } from 'express';
 import getLogger from '../configs/logger';
-import type { APIRoute, HttpMethod } from '../types/api';
+import { rateLimited } from '../configs/metrics';
+import type { APIRoute, HttpMethod, RateLimitConfig } from '../types/api';
 import AlertService from '../utils/alerts';
+import { getClientIp } from '../utils/clientIp';
+import { rateLimitHeaders } from '../utils/rateLimitHeaders';
 import RedisService from './redis.service';
-
-type RateLimitIdentifierStrategy = 'API_KEY' | 'USER' | 'IP' | 'USER_OR_IP';
-
-interface SlidingWindowLimit {
-  perMinute?: number;
-  perDay?: number;
-  key?: RateLimitIdentifierStrategy;
-}
 
 interface EnforceParams {
   serviceName: string;
@@ -28,233 +23,122 @@ interface EnforceResult {
   message?: string;
 }
 
+interface WindowResult {
+  allowed: boolean;
+  remaining: number;
+  retryAfter: number;
+  reset: number;
+}
+
 const logger = getLogger();
+
+// Sliding-window log in a sorted set. Returns {allowed, remaining, retryAfter, reset} in seconds.
+const SLIDING_WINDOW_SCRIPT = `
+  local key = KEYS[1]
+  local now = tonumber(ARGV[1])
+  local windowMs = tonumber(ARGV[2])
+  local limit = tonumber(ARGV[3])
+
+  redis.call('ZREMRANGEBYSCORE', key, 0, now - windowMs)
+  local current = redis.call('ZCARD', key)
+  local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+  local reset = math.ceil(windowMs / 1000)
+  if oldest and oldest[2] then
+    reset = math.max(1, math.ceil((tonumber(oldest[2]) + windowMs - now) / 1000))
+  end
+
+  if current < limit then
+    redis.call('ZADD', key, now, now .. '-' .. math.random())
+    redis.call('PEXPIRE', key, windowMs)
+    return {1, limit - current - 1, 0, reset}
+  end
+  return {0, 0, reset, reset}
+`;
 
 class RateLimitService {
   private static instance: RateLimitService;
-
-  private redisService: RedisService;
-
-  private enabled: boolean;
-
-  private alertService = AlertService.getInstance();
-
-  private trustedIpSet: Set<string>;
-
-
-  private slidingWindowScript = `
-    local key = KEYS[1]
-    local now = tonumber(ARGV[1])
-    local windowMs = tonumber(ARGV[2])
-    local limit = tonumber(ARGV[3])
-    local expireSeconds = tonumber(ARGV[4])
-
-    redis.call('ZREMRANGEBYSCORE', key, 0, now - windowMs)
-    local current = redis.call('ZCARD', key)
-
-    if current < limit then
-      redis.call('ZADD', key, now, now .. '-' .. math.random())
-      redis.call('EXPIRE', key, expireSeconds)
-      return {1, limit - current - 1}
-    else
-      local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-      local retryAfter = 1
-      if oldest and oldest[2] then
-        retryAfter = math.max(1, math.ceil((oldest[2] + windowMs - now) / 1000))
-      end
-      return {0, 0, retryAfter}
-    end
-  `;
+  private readonly redisService = RedisService.getInstance();
+  private readonly alertService = AlertService.getInstance();
+  private readonly trustedIpSet: Set<string>;
 
   private constructor() {
-    // Initialize Redis service (singleton - shared across project)
-    this.redisService = RedisService.getInstance();
-
-    // Initialize trusted IPs from environment variable
-    const trustedIpEnv = process.env.TRUSTED_IPS || '';
-    const trustedIps = trustedIpEnv
-      .split(',')
-      .map((ip) => ip.trim())
-      .filter((ip) => ip.length > 0);
-    this.trustedIpSet = new Set(trustedIps);
-
-    this.enabled = true;
+    this.trustedIpSet = new Set(
+      (process.env.TRUSTED_IPS || '').split(',').map((ip) => ip.trim()).filter(Boolean)
+    );
   }
 
   public static getInstance(): RateLimitService {
-    if (!RateLimitService.instance) {
-      RateLimitService.instance = new RateLimitService();
-    }
+    if (!RateLimitService.instance) RateLimitService.instance = new RateLimitService();
     return RateLimitService.instance;
   }
 
-  public async close(): Promise<void> {
-    // Note: Redis connection is managed by RedisService singleton
-    // Don't close it here as it may be used by other services
-    // The connection will be closed when the application shuts down
+  private resolveIdentifier(strategy: RateLimitConfig['key'], req: Request, userId?: string, apiKey?: string): string {
+    const ip = `ip:${getClientIp(req)}`;
+    switch (strategy) {
+      case 'API_KEY': return apiKey ? `apikey:${apiKey}` : ip;
+      case 'USER': return userId ? `user:${userId}` : ip;
+      case 'USER_OR_IP': return userId ? `user:${userId}` : ip;
+      case 'IP_USER': return userId ? `${ip}|user:${userId}` : ip;
+      case 'IP':
+      default: return ip;
+    }
   }
 
-  private resolveIdentifier(
-    strategy: RateLimitIdentifierStrategy | undefined,
-    req: Request,
-    userId?: string,
-    apiKey?: string
-  ): string {
-    if (strategy === 'API_KEY' && apiKey) return `apikey:${apiKey}`;
-    if (strategy === 'USER' && userId) return `user:${userId}`;
-    if (strategy === 'USER_OR_IP') {
-      if (userId) return `user:${userId}`;
-      return `ip:${this.getClientIp(req)}`;
-    }
-    if (strategy === 'IP' || !strategy) {
-      return `ip:${this.getClientIp(req)}`;
-    }
-    if (apiKey) return `apikey:${apiKey}`;
-    if (userId) return `user:${userId}`;
-    return `ip:${this.getClientIp(req)}`;
-  }
-
-  private getClientIp(req: Request): string {
-    const forwarded = req.headers['x-forwarded-for'];
-    if (forwarded && typeof forwarded === 'string') {
-      return forwarded.split(',')[0].trim();
-    }
-    if (Array.isArray(forwarded) && forwarded.length > 0) {
-      return forwarded[0];
-    }
-    return req.ip || req.socket.remoteAddress || 'unknown';
-  }
-
-  private async consumeWindow(
-    baseKey: string,
-    windowMs: number,
-    limit: number
-  ): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
-    if (!this.enabled) {
-      return { allowed: true, remaining: limit };
-    }
+  private async consumeWindow(key: string, windowMs: number, limit: number): Promise<WindowResult> {
     const redis = this.redisService.getClient();
-    if (!redis) {
-      throw new Error('Redis client unavailable — cannot enforce rate limit');
-    }
-
-    const expireSeconds = Math.ceil(windowMs / 1000);
-    const result = (await redis.eval(
-      this.slidingWindowScript,
-      1,
-      baseKey,
-      Date.now(),
-      windowMs,
-      limit,
-      expireSeconds
-    )) as [number, number, number?];
-
-    return {
-      allowed: result[0] === 1,
-      remaining: result[1],
-      retryAfter: result[2]
-    };
+    if (!redis) throw new Error('Redis client unavailable');
+    const r = (await redis.eval(SLIDING_WINDOW_SCRIPT, 1, key, Date.now(), windowMs, limit)) as number[];
+    return { allowed: r[0] === 1, remaining: r[1], retryAfter: r[2], reset: r[3] };
   }
 
-  public async enforce({
-    serviceName,
-    route,
-    method,
-    req,
-    userId,
-    apiKey
-  }: EnforceParams): Promise<EnforceResult> {
-    const rateLimit = route.rateLimit as SlidingWindowLimit | undefined;
-    if (!rateLimit || (!rateLimit.perMinute && !rateLimit.perDay)) {
+  /**
+   * Enforce the route's rateLimit block. Day window is checked before minute so a day
+   * rejection never burns a minute token. Fails open (allows) when Redis is unreachable.
+   */
+  public async enforce({ serviceName, route, method, req, userId, apiKey }: EnforceParams): Promise<EnforceResult> {
+    const rl = route.rateLimit;
+    if (!rl || (!rl.perMinute && !rl.perDay)) return { allowed: true, headers: {} };
+    if (this.trustedIpSet.has(getClientIp(req))) return { allowed: true, headers: {} };
+
+    const identifier = this.resolveIdentifier(rl.key, req, userId, apiKey);
+    const baseKey = rl.group
+      ? `ratelimit:group:${rl.group}:${identifier}`
+      : `ratelimit:${serviceName}:${method}:${route.path}:${identifier}`;
+
+    const windows: Array<{ name: string; ms: number; limit: number }> = [];
+    if (rl.perDay) windows.push({ name: 'd', ms: 86_400_000, limit: rl.perDay });
+    if (rl.perMinute) windows.push({ name: 'm', ms: 60_000, limit: rl.perMinute });
+
+    let tightest: { headers: Record<string, string>; remaining: number } | undefined;
+    try {
+      for (const w of windows) {
+        const result = await this.consumeWindow(`${baseKey}:${w.name}`, w.ms, w.limit);
+        const headers = rl.hideHeaders ? {} : rateLimitHeaders(w.limit, result.remaining, result.reset, w.ms / 1000);
+        if (!result.allowed) {
+          rateLimited.inc({ service: serviceName, route: route.path, scope: 'route' });
+          this.alertService.alert(
+            `ratelimit:${identifier}`,
+            '⚠️ Rate Limit Exceeded',
+            `**Identifier:** ${identifier}\n**Endpoint:** ${method} ${route.path}\n**Service:** ${serviceName}\n**Window:** ${w.name === 'd' ? 'day' : 'minute'} (limit ${w.limit})\n**Retry After:** ${result.retryAfter}s`
+          );
+          return {
+            allowed: false,
+            headers,
+            retryAfterSeconds: result.retryAfter,
+            message: w.name === 'd' ? 'Daily rate limit exceeded' : 'Per-minute rate limit exceeded',
+          };
+        }
+        if (!tightest || result.remaining < tightest.remaining) tightest = { headers, remaining: result.remaining };
+      }
+    } catch (e) {
+      // ponytail: fail open — a Redis outage must not take the API down with it
+      logger.warn({ err: (e as Error).message, key: baseKey }, 'rate limit check failed, allowing request');
       return { allowed: true, headers: {} };
     }
 
-    // Check if IP is trusted - skip rate limiting for trusted IPs
-    const clientIp = this.getClientIp(req);
-    if (this.trustedIpSet.has(clientIp)) {
-      return { allowed: true, headers: {} };
-    }
-
-    const identifier = this.resolveIdentifier(rateLimit.key, req, userId, apiKey);
-    const baseKey = `ratelimit:${serviceName}:${method}:${route.path}:${identifier}`;
-    const headers: Record<string, string> = {};
-
-    if (!this.enabled) {
-      return { allowed: true, headers };
-    }
-
-    if (rateLimit.perMinute) {
-      const result = await this.consumeWindow(
-        `${baseKey}:m`,
-        60 * 1000,
-        rateLimit.perMinute
-      );
-      headers['X-RateLimit-Limit-Minute'] = rateLimit.perMinute.toString();
-      headers['X-RateLimit-Remaining-Minute'] = Math.max(result.remaining, 0).toString();
-
-      if (!result.allowed) {
-        // Send Discord alert only if cooldown has passed (throttle alerts)
-        if (this.alertService.enabled) {
-          const ip = this.getClientIp(req);
-          const userDetails = [
-            `**IP Address:** ${ip}`,
-            userId && `**User ID:** ${userId}`,
-            apiKey && `**API Key:** ${apiKey.substring(0, 10)}...`,
-            `**Identifier:** ${identifier}`
-          ].filter(Boolean).join('\n');
-
-          const message = `${userDetails}\n**Endpoint:** ${method} ${route.path}\n**Service:** ${serviceName}\n**Limit Type:** Per Minute\n**Limit:** ${rateLimit.perMinute}${result.retryAfter ? `\n**Retry After:** ${result.retryAfter} seconds` : ''}\n**Time:** ${new Date().toISOString()}`;
-
-          this.alertService.alert(`ratelimit:`, '⚠️ Rate Limit Exceeded', message);
-        }
-  
-        return {
-          allowed: false,
-          headers,
-          retryAfterSeconds: result.retryAfter ?? 60,
-          message: 'Per-minute rate limit exceeded'
-        };
-      }
-    }
-
-    if (rateLimit.perDay) {
-      const result = await this.consumeWindow(
-        `${baseKey}:d`,
-        24 * 60 * 60 * 1000,
-        rateLimit.perDay
-      );
-      headers['X-RateLimit-Limit-Day'] = rateLimit.perDay.toString();
-      headers['X-RateLimit-Remaining-Day'] = Math.max(result.remaining, 0).toString();
-
-      if (!result.allowed) {
-        // Send Discord alert only if cooldown has passed (throttle alerts)
-        if (this.alertService.enabled) {
-          const ip = this.getClientIp(req);
-          const userDetails = [
-            `**IP Address:** ${ip}`,
-            userId && `**User ID:** ${userId}`,
-            apiKey && `**API Key:** ${apiKey.substring(0, 10)}...`,
-            `**Identifier:** ${identifier}`
-          ].filter(Boolean).join('\n');
-
-          const message = `${userDetails}\n**Endpoint:** ${method} ${route.path}\n**Service:** ${serviceName}\n**Limit Type:** Per Day\n**Limit:** ${rateLimit.perDay}${result.retryAfter ? `\n**Retry After:** ${result.retryAfter} seconds` : ''}\n**Time:** ${new Date().toISOString()}`;
-
-          this.alertService.alert(`ratelimit:`, '⚠️ Rate Limit Exceeded', message);
-        }
-        
-        return {
-          allowed: false,
-          headers,
-          retryAfterSeconds: result.retryAfter ?? 60 * 60,
-          message: 'Daily rate limit exceeded'
-        };
-      }
-    }
-
-    return { allowed: true, headers };
+    return { allowed: true, headers: tightest?.headers ?? {} };
   }
 }
 
-export type { RateLimitIdentifierStrategy, SlidingWindowLimit, EnforceResult };
+export type { EnforceResult };
 export default RateLimitService;
-

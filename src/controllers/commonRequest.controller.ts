@@ -495,6 +495,7 @@ class CommonRequestController {
 
       if (!rateLimitResult.allowed) {
         CorsHandler.setHeaders(req, res);
+        res.setHeader('Retry-After', String(rateLimitResult.retryAfterSeconds ?? 60));
         return res.status(429).json({
           error: 'Too Many Requests',
           message: rateLimitResult.message,

@@ -9,9 +9,9 @@ import RouteRegistry from './services/routeRegistry';
 import CommonRequestRoute from './routes/commonRequest.route';
 import GeoFenceRoute from './routes/geoFenceRequest.route';
 import CorsHandler from './utils/corsUtil';
+import { parseTrustProxy } from './utils/clientIp';
 import compression from 'compression';
 import IPRateLimiter from './middlewares/ipRateLimiter';
-import RateLimitService from './services/rateLimit.service';
 import RedisService from './services/redis.service';
 
 
@@ -23,9 +23,10 @@ routeRegistry.initialize(configDir);
 if (process.env.CONFIG_WATCH !== 'false') routeRegistry.watch(configDir);
 
 const app: Express = express();
+// Which proxies to trust for X-Forwarded-For; req.ip is derived from this. Default: none.
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 const port = 3000;
 const ipRateLimiter = new IPRateLimiter();
-const rateLimitService = RateLimitService.getInstance();
 const redisService = RedisService.getInstance();
 
 app.use(requestIdMiddleware);
@@ -99,8 +100,6 @@ const shutdown = async () => {
   isShuttingDown = true;
   const logger = getLogger();
   logger.info('Shutting down Sancus gateway...');
-  ipRateLimiter.destroy();
-  await rateLimitService.close();
   await redisService.close(); // Close Redis connection
   process.exit(0);
 };
