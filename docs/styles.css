@@ -202,8 +202,8 @@ img.missing + figcaption { display: none; }
 
 /* introduction: six reasons, each with a spot illustration */
 .reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 26px 0 30px; max-width: 1040px; }
-.reason { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; }
-.reason img { width: 96px; height: 96px; border-radius: 10px; display: block; }
+.reason { display: grid; grid-template-columns: 128px 1fr; gap: 18px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; }
+.reason img { width: 128px; height: 128px; border-radius: 10px; display: block; background: #0b1c22; }
 .reason img.missing { display: block; visibility: hidden; }
 .reason h3 { margin: 2px 0 6px; font-size: 18px; }
 .reason p { margin: 0; font-size: 15px; color: var(--ink-2); }
