@@ -133,6 +133,12 @@ npm run check -- ./cfg   # another directory
 
 ---
 
+## 📚 Docs
+
+The full documentation site lives in `docs/` and is served with GitHub Pages (Settings → Pages → Deploy from branch → `/docs`). Start at [docs/index.html](docs/index.html): what and why, a request walk-through, use cases, benchmarks, and the reference pages.
+
+---
+
 ## 🎓 Demo
 
 `demo/` is a runnable mini-platform (auth service, a users service, two catalog replicas, Redis) plus a 17-step guided tour that exercises every feature with real requests. `cd demo && docker compose up --build`, then `./tour.sh`. See [demo/README.md](demo/README.md).

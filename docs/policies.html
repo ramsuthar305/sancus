@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policies · Sancus</title>
+<meta name="description" content="Write a rule once as a small module, reference it from YAML on any service or route.">
+<meta property="og:title" content="Policies · Sancus">
+<meta property="og:description" content="Write a rule once as a small module, reference it from YAML on any service or route.">
+<meta property="og:image" content="assets/social-card.png">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
+<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html">Upstreams and failure</a><a class="item" href="policies.html" aria-current="page">Policies</a><a class="item" href="operations.html">Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+</nav>
+<main>
+
+<h1>Policies</h1>
+<p class="lede">A policy is a named middleware you configure from YAML. Sancus ships one, <code>ip-restriction</code>. You write the rest as files in <code>policies/</code>, and reference them by name on a service or a route.</p>
+
+<h2>Using one</h2>
+<pre><code class="language-yaml">service:
+  name: admin
+  nodes: [http://admin:8080]
+  policies:
+    ip-restriction: { allow: [10.0.0.0/8, 203.0.113.7], deny: [] }
+apis:
+  - name: Imports
+    routes:
+      - path: /v1/import
+        methods: [POST]
+        policies:
+          require-header: { header: X-Idempotency-Key }</code></pre>
+<p>Service policies run first, then route policies, each set in priority order. A policy that answers the request ends it there. Sancus validates the config against the policy's schema when the file loads, so a typo is a startup error rather than a runtime surprise.</p>
+
+<h2>Writing one</h2>
+<pre><code class="language-javascript">// policies/require-header.js
+module.exports = {
+  name: &#x27;require-header&#x27;,
+  priority: 10,             // higher runs first
+  schema: { type: &#x27;object&#x27;, required: [&#x27;header&#x27;], properties: { header: { type: &#x27;string&#x27; } } },
+  create: ({ header }) =&gt; (req, res, next) =&gt;
+    req.headers[header.toLowerCase()] ? next() : res.status(400).json({ message: `missing ${{header}}` }),
+};</code></pre>
+<p><code>create</code> receives the config from YAML and returns an Express middleware. Anything Express can do, a policy can do: read headers, set headers, reject, redirect, call another service. The module can also export an array of policies.</p>
+
+<h2>ip-restriction</h2>
+<p><code>allow</code> and <code>deny</code> take addresses or CIDR ranges. Deny wins. A non-empty allow list rejects anything not on it. Matching uses Node's built-in BlockList, so IPv6 works.</p>
+
+<h2>Ideas</h2>
+<ul>
+<li>A maintenance switch that answers 503 for one service while you deploy it.</li>
+<li>A header that must match a tenant id from the auth response, forwarded via <code>AUTH_UPSTREAM_HEADERS</code>.</li>
+<li>A canary that sends one request in ten to a different node list.</li>
+<li>A body size cap on upload routes.</li>
+</ul>
+<p><code>/routes</code> lists the policies that are loaded.</p>
+
+<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

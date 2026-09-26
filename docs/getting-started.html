@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get it running · Sancus</title>
+<meta name="description" content="Install Sancus with Docker Compose or Node, point it at a service, and send your first request.">
+<meta property="og:title" content="Get it running · Sancus">
+<meta property="og:description" content="Install Sancus with Docker Compose or Node, point it at a service, and send your first request.">
+<meta property="og:image" content="assets/social-card.png">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
+<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html" aria-current="page">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+</nav>
+<main>
+
+<h1>Get it running</h1>
+<p class="lede">Two ways. Docker Compose starts the gateway with Redis in one command. Node plus a local Redis works too.</p>
+
+<h2>With Docker</h2>
+<pre><code class="language-bash">git clone https://github.com/ramsuthar305/sancus.git &amp;&amp; cd sancus
+docker compose up
+curl -i localhost:3000/health/ready</code></pre>
+<p>You get <code>{"status":"UP"}</code> once the config is loaded and Redis answers. The compose file mounts <code>api_configs/</code>, so you edit YAML on your machine and the gateway picks it up.</p>
+
+<h2>With Node</h2>
+<pre><code class="language-bash">npm ci &amp;&amp; npm run build
+cat &gt; .env &lt;&lt;&#x27;ENV&#x27;
+YOUR_SERVICE_HOST=http://localhost:8000
+AUTH_URL=http://localhost:8001
+REDIS_URL=redis://localhost:6379
+ENV
+npm run check      # validates api_configs/
+npm start</code></pre>
+<p><code>npm run dev</code> restarts on every change while you work on the gateway itself.</p>
+
+<h2>Your first service</h2>
+<ol class="steps">
+<li>Start something on port 8000 that answers HTTP. A one-line Python server is enough: <code>python3 -m http.server 8000</code>.</li>
+<li>Open <code>api_configs/your_service_name.yml</code>. It already points at <code>YOUR_SERVICE_HOST</code>. Set that variable to <code>http://localhost:8000</code>.</li>
+<li>Send a request through the gateway: <code>curl -i localhost:3000/api/your_service_name/v1/public/search</code>.</li>
+<li>Look at the headers. <code>X-Request-Id</code>, <code>X-RateLimit-Remaining</code> and <code>X-Cache-Status: MISS</code> tell you the gateway did its work. Send it again and the cache answers.</li>
+</ol>
+
+<h2>Your own auth</h2>
+<p>Routes without <code>bypass: [AUTH]</code> need a token. Sancus sends the token to <code>AUTH_URL</code> and expects a 2xx with an <code>id</code> field. If you already have a token introspection endpoint, set five variables and you are done. The <a href="auth.html">auth page</a> has the full contract and examples for services that use a header instead of a body, or a nested id.</p>
+<p>No verifier yet? Start with everything on <code>bypass: [AUTH]</code>, or set <code>AUTH_FAIL_OPEN=true</code> while you build one.</p>
+
+<h2>Behind a load balancer</h2>
+<div class="note bronze"><p><strong>Set <code>TRUST_PROXY</code> before you go live.</strong> The default trusts private addresses, which covers an ingress or ALB inside your network. If your proxy has a public address (Cloudflare, for instance), list its ranges. With the wrong value every user shares the balancer's IP and the per-IP limiter throttles the whole site. Sancus refuses to start with <code>TRUST_PROXY=false</code> while the IP limiter is on, for that reason.</p></div>
+
+<h2>Kubernetes</h2>
+<pre><code class="language-bash">kubectl apply -k k8s/</code></pre>
+<p>The manifests include a ConfigMap, an example Secret, readiness on <code>/health/ready</code>, resource limits, an HPA and a PodDisruptionBudget. Change the image tag, the hosts, and the upstream URLs. The <a href="operations.html">operations page</a> covers what to watch once it runs.</p>
+
+<h2>Next</h2>
+<p>Run the <a href="demo.html">demo</a>: a fake platform with two services, an auth server and a 17-step tour that shows every feature with a real request.</p>
+
+<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

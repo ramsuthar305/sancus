@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upstreams and failure · Sancus</title>
+<meta name="description" content="Several nodes per service, retries, timeouts, a circuit breaker and what the client sees when things break.">
+<meta property="og:title" content="Upstreams and failure · Sancus">
+<meta property="og:description" content="Several nodes per service, retries, timeouts, a circuit breaker and what the client sees when things break.">
+<meta property="og:image" content="assets/social-card.png">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
+<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html" aria-current="page">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+</nav>
+<main>
+
+<h1>Upstreams and failure</h1>
+<p class="lede">A service can have several nodes. Sancus spreads requests across them, steps around the ones that fail, gives up on the slow ones, and stops calling a service that keeps failing.</p>
+
+<h2>Nodes</h2>
+<pre><code class="language-yaml">service:
+  name: users
+  nodes: [http://users-a:8080, http://users-b:8080]
+  retries: 1
+  timeout: 5000
+  circuitBreaker: { volumeThreshold: 10, errorThresholdPercentage: 50, resetTimeout: 30000 }</code></pre>
+<p>Requests go round-robin. A node that refuses connections, or whose name does not resolve, is marked down for <code>UPSTREAM_UNHEALTHY_TTL_MS</code> (30 s) and skipped. If every node is down, Sancus tries anyway rather than fail without asking. Connections to each node are kept alive in a pool of <code>UPSTREAM_MAX_SOCKETS</code> per worker.</p>
+
+<h2>Retries</h2>
+<p><code>retries</code> is the number of extra attempts after a connection error, each on the next node. Only GET, HEAD and OPTIONS retry, because a POST that reached the upstream before the connection dropped may have done its work. A 5xx from the upstream is a response, not a connection error, and is never retried.</p>
+
+<h2>Timeouts</h2>
+<p><code>timeout</code> is how long to wait for the upstream's response headers. Past it the client gets a 504 and the upstream request is cancelled. Set it below your load balancer's idle timeout so the client hears from Sancus rather than from the balancer.</p>
+
+<h2>Circuit breaker</h2>
+<p>With a <code>circuitBreaker</code> block, Sancus counts each proxied call to the service over a rolling ten-second window. Once at least <code>volumeThreshold</code> calls happened and more than <code>errorThresholdPercentage</code> of them failed, the breaker opens. Failures are connection errors, timeouts and 5xx responses. While open, callers get a 503 with <code>Retry-After</code> at once and the service gets a rest. After <code>resetTimeout</code> milliseconds one request is let through; if it succeeds the breaker closes.</p>
+<p>The breaker is per service, per gateway worker. It is not shared through Redis, so with four workers each one decides on its own view of the traffic.</p>
+
+<h2>What the client sees</h2>
+<table>
+<tr><th>Situation</th><th>Status</th><th>Body</th></tr>
+<tr><td>Upstream refused, all retries used</td><td><span class="status bad">502</span></td><td><code>{"message":"Bad gateway","response_code":"SE0502"}</code></td></tr>
+<tr><td>Upstream too slow</td><td><span class="status bad">504</span></td><td><code>{"message":"Upstream timed out","response_code":"SE0504"}</code></td></tr>
+<tr><td>Breaker open</td><td><span class="status warn">503</span> + Retry-After</td><td><code>{"message":"Upstream unavailable","response_code":"SE0503"}</code></td></tr>
+<tr><td>Upstream answered 5xx</td><td>that status</td><td>the upstream's body, untouched</td></tr>
+</table>
+<p>Every one of these also sends an alert to <code>ALERT_WEBHOOK_URL</code> if you set one, at most once a minute per service and error.</p>
+
+<h2>Streaming</h2>
+<p>Bodies stream in both directions. Server-Sent Events pass through without buffering or compression, and the gateway stops the upstream request when the client disconnects. Multipart uploads are parsed, checked against a size and type list, and re-sent.</p>
+
+<h2>Hot reload</h2>
+<p>Save a file in <code>api_configs/</code> and Sancus validates it and swaps the routing table in place. A file that fails validation is logged, counted in <code>sancus_config_reloads_total{status="error"}</code>, and ignored. The previous config keeps serving.</p>
+
+<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

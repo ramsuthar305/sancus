@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The demo · Sancus</title>
+<meta name="description" content="A runnable mini platform with a guided tour through every Sancus feature.">
+<meta property="og:title" content="The demo · Sancus">
+<meta property="og:description" content="A runnable mini platform with a guided tour through every Sancus feature.">
+<meta property="og:image" content="assets/social-card.png">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
+<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html" aria-current="page">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+</nav>
+<main>
+
+<h1>The demo</h1>
+<p class="lede">A small platform lives in <code>demo/</code>: an auth service, a users service, two copies of a catalog service, Redis, and a script that walks you through seventeen requests and tells you which headers to look at.</p>
+<figure><img data-asset src="assets/demo-platform.png" alt="Sancus standing between a laptop and three small services, with Redis beside it" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<h2>Run it</h2>
+<pre><code class="language-bash">cd demo
+docker compose up --build
+./tour.sh          # in another terminal</code></pre>
+<p>Without Docker: <code>./demo/run-local.sh</code> from the repo root, with Node 18+ and a local Redis.</p>
+
+<h2>What the tour shows</h2>
+<table>
+<tr><th>Step</th><th>You send</th><th>You see</th></tr>
+<tr><td>Request ids</td><td>a request with <code>X-Request-Id: tour-0001</code></td><td>the same id in the response and in the upstream's echo</td></tr>
+<tr><td>Auth</td><td>no token, a bad token, a good one</td><td>401, the verifier's own 401 passed through, then 200 with the user id forwarded</td></tr>
+<tr><td>Cache</td><td>the same GET three times</td><td>MISS, HIT with Age and ETag, then 304</td></tr>
+<tr><td>Stale-while-revalidate</td><td>a GET after the entry aged</td><td>STALE served at once, HIT with fresh data next</td></tr>
+<tr><td>Rate limit</td><td>six calls on a 5-a-minute route</td><td>X-RateLimit-Remaining counting down, then 429 with Retry-After</td></tr>
+<tr><td>Replicas</td><td>four uncached GETs</td><td>servedBy alternating between the two catalog copies</td></tr>
+<tr><td>Timeout</td><td>a route that takes 2.5 s on a 1.5 s limit</td><td>504 after 1.5 s</td></tr>
+<tr><td>Streaming</td><td>an SSE route</td><td>five events with timestamps 400 ms apart</td></tr>
+<tr><td>Policies</td><td>a POST without a header</td><td>400 from a policy you can read in eight lines</td></tr>
+<tr><td>Breaker</td><td>a route that always fails</td><td>500s, then 503 from the gateway with Retry-After</td></tr>
+<tr><td>Hot reload</td><td>a new YAML file dropped in</td><td>the new service answers; a broken file is rejected and the old config stays</td></tr>
+</table>
+<p>Keep the service logs open while you go. The auth log shows one call per token, the catalog logs show which requests never reached the service.</p>
+
+<h2>After the tour</h2>
+<ul>
+<li>Change a TTL in <code>demo/api_configs/catalog.yml</code> and save. The next request uses it.</li>
+<li>Stop <code>catalog-b</code> and call the replicas route. The first call retries onto <code>catalog-a</code>, then b is skipped for thirty seconds.</li>
+<li>Copy <code>demo/policies/require-header.js</code>, rename it, and reference it from a route.</li>
+</ul>
+
+<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Where it fits · Sancus</title>
+<meta name="description" content="Three situations where a small gateway pays for itself, and two where it does not.">
+<meta property="og:title" content="Where it fits · Sancus">
+<meta property="og:description" content="Three situations where a small gateway pays for itself, and two where it does not.">
+<meta property="og:image" content="assets/social-card.png">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="layout">
+<nav class="rail" id="nav" aria-label="Documentation">
+<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
+<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html" aria-current="page">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<div class="group">Project</div>
+<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+</nav>
+<main>
+
+<h1>Where it fits</h1>
+<p class="lede">Sancus makes sense when the gateway is one of many things you run, not the thing you run. Three stories, then the honest counter-cases.</p>
+
+<h2>A product team with a handful of services</h2>
+<figure><img data-asset src="assets/usecase-startup.png" alt="A small team at a table with a laptop showing three services behind one gate" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<p>You run an API, a search service and a payments worker. Each has its own auth check, copied from the last one. You add Sancus, point it at your existing token endpoint, and delete the auth middleware from all three. The services trust <code>X-AUTHORIZED-FOR-ID</code> and stop caring about tokens.</p>
+<p>The search route gets <code>cache: { strategy: SWR, ttl: 300 }</code>. Search traffic to the service drops by most of its volume and users stop seeing the slow query. Payments gets <code>rateLimit: { perMinute: 10, key: USER }</code>, which nobody had time to write before.</p>
+
+<h2>A mobile app backend</h2>
+<figure><img data-asset src="assets/usecase-mobile.png" alt="A phone sending requests through a gate, with a cache and a rate limiter beside the road" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<p>Ten thousand phones poll the same feed. Sancus caches the feed per path, serves 304 to phones that already have it, and puts <code>Cache-Control: public, max-age=60</code> on the response so the phones stop asking for a minute. The feed service sees one request a minute per feed instead of ten thousand.</p>
+<p>The IP limiter handles the odd device stuck in a retry loop. The per-user limiter on the upload route stops one account from filling the queue. Both limits live in Redis, so adding a second gateway pod does not double anyone's quota.</p>
+
+<h2>An internal platform</h2>
+<figure><img data-asset src="assets/usecase-internal.png" alt="Several small teams each adding a door to a shared wall, with one gatekeeper" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<p>Five teams, each shipping a service, each wanting a route. Every team owns one YAML file in <code>api_configs/</code>. The platform team owns the gateway, the auth verifier, and the policy folder. A team that needs a rule nobody else has writes it as a policy in a few lines, and the config check runs in their pull request.</p>
+<p><code>/routes</code> lists what is live. <code>/metrics</code> shows requests per service and route. A broken YAML never reaches production because the gateway refuses to load it.</p>
+
+<h2>When to pick something else</h2>
+<table>
+<tr><th>You need</th><th>Use</th><th>Why</th></tr>
+<tr><td>More than about 50k requests a second per node</td><td>APISIX, Kong</td><td>Nginx-based gateways do 4 to 7 times the throughput per core. See the <a href="benchmarks.html">numbers</a>.</td></tr>
+<tr><td>JWT validation without a verifier service</td><td>Kong, Traefik, APISIX, KrakenD</td><td>Sancus calls a verifier. It does not check signatures itself.</td></tr>
+<tr><td>Kubernetes Gateway API CRDs</td><td>Envoy Gateway, Traefik</td><td>Sancus reads YAML files, not cluster resources.</td></tr>
+<tr><td>Request and response body rewriting</td><td>KrakenD, APISIX</td><td>Sancus forwards bodies untouched. You can add a policy, but there is no built-in transformer.</td></tr>
+</table>
+<p>Sancus is the right size when one person can read the whole config and the whole gateway in an afternoon.</p>
+
+<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+</main>
+</div>
+<script src="site.js"></script>
+</body>
+</html>
