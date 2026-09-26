@@ -19,7 +19,6 @@ interface CacheConfig {
   browserTtl?: number;     // seconds — if set, emits Cache-Control to the client
   varyHeaders?: string[];  // request headers folded into the cache key
   statusCodes?: number[];  // cacheable upstream statuses (default 200, 301, 404)
-  shared?: boolean;        // required to share one cached answer between users on a route that knows the user
 }
 
 interface HeaderRules {

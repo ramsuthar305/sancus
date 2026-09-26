@@ -4,6 +4,9 @@ import yaml from 'js-yaml';
 import path from 'path';
 import schema from '../configs/apiConfig.schema.json';
 import { APIConfig } from '../types/api';
+import getLogger from '../configs/logger';
+
+const logger = getLogger();
 
 const ajv = new Ajv({ allErrors: true });
 const validate = ajv.compile<APIConfig>(schema);
@@ -27,25 +30,25 @@ export function interpolateEnv(text: string): string {
 
 /**
  * A route that knows who the user is (auth required, or resolveUser) may answer each user
- * differently. Caching it under a key without the user would hand one user's response to the
- * next. Require key PATH_QUERY_USER, or an explicit `shared: true` saying every user gets the
- * same answer.
+ * differently. The cache key says which you meant: PATH_QUERY_USER keeps one entry per user,
+ * PATH / PATH_QUERY keep one entry for everyone. The shared keys are allowed, and flagged here so
+ * a copied key on a personal route gets noticed.
  */
-function checkCacheRules(filePath: string, config: APIConfig): void {
+export function cacheWarnings(config: APIConfig): string[] {
+  const out: string[] = [];
   for (const api of config.apis) {
     for (const route of api.routes) {
       const c = route.cache;
-      if (!c || c.shared || c.key === 'PATH_QUERY_USER') continue;
-      const seesUser = !route.bypass?.includes('AUTH') || route.resolveUser;
-      if (seesUser) {
-        throw new ConfigError(
-          filePath,
-          `route ${route.path}: the response may differ per user but the cache key "${c.key ?? 'PATH'}" is shared between users. ` +
-            'Use key: PATH_QUERY_USER, or add shared: true if every user gets the same response.'
+      if (!c || c.key === 'PATH_QUERY_USER') continue;
+      if (!route.bypass?.includes('AUTH') || route.resolveUser) {
+        out.push(
+          `route ${route.path} knows the user but caches with the shared key "${c.key ?? 'PATH'}": every user gets the same cached response. ` +
+            'If the response differs per user, use key: PATH_QUERY_USER.'
         );
       }
     }
   }
+  return out;
 }
 
 /** Parse and validate one YAML file. Throws ConfigError on any problem. */
@@ -59,7 +62,7 @@ export function loadConfigFile(filePath: string): APIConfig {
   if (!validate(parsed)) {
     throw new ConfigError(filePath, formatErrors(validate.errors));
   }
-  checkCacheRules(filePath, parsed);
+  for (const w of cacheWarnings(parsed)) logger.warn({ file: filePath }, w);
   return parsed;
 }
 

@@ -1,25 +1,22 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { loadConfigFile } from '../utils/configValidator';
+jest.mock('../configs/logger', () => () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }));
 
-const write = (yml: string) => {
-  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cfg-')), 's.yml');
-  fs.writeFileSync(f, yml);
-  return f;
-};
-const svc = (route: string) => `service: { name: s, nodes: [http://x] }\napis: [{ name: a, routes: [${route}] }]\n`;
+import yaml from 'js-yaml';
+import { cacheWarnings } from '../utils/configValidator';
+import type { APIConfig } from '../types/api';
 
-describe('cache rules for routes that see a user (security 1)', () => {
-  it('refuses a shared cache key on an auth-required route', () => {
-    expect(() => loadConfigFile(write(svc('{ path: /me, methods: [GET], cache: { strategy: LRU, ttl: 60, key: PATH } }')))).toThrow(/PATH_QUERY_USER/);
+const svc = (route: string) => yaml.load(`service: { name: s, nodes: [http://x] }\napis: [{ name: a, routes: [${route}] }]\n`) as APIConfig;
+
+describe('cache key warnings for routes that know the user (security 1)', () => {
+  it('warns on a shared key when the route needs a login', () => {
+    const w = cacheWarnings(svc('{ path: /me, methods: [GET], cache: { strategy: LRU, ttl: 60, key: PATH } }'));
+    expect(w).toHaveLength(1);
+    expect(w[0]).toMatch(/PATH_QUERY_USER/);
   });
-  it('refuses a shared cache key on a resolveUser route', () => {
-    expect(() => loadConfigFile(write(svc('{ path: /feed, methods: [GET], bypass: [AUTH], resolveUser: true, cache: { strategy: LRU, ttl: 60, key: PATH_QUERY } }')))).toThrow(/shared: true/);
+  it('warns on a shared key on a resolveUser route', () => {
+    expect(cacheWarnings(svc('{ path: /feed, methods: [GET], bypass: [AUTH], resolveUser: true, cache: { strategy: LRU, ttl: 60, key: PATH_QUERY } }'))).toHaveLength(1);
   });
-  it('allows a per-user key, or a shared key when marked shared: true', () => {
-    expect(() => loadConfigFile(write(svc('{ path: /me, methods: [GET], cache: { strategy: LRU, ttl: 60, key: PATH_QUERY_USER } }')))).not.toThrow();
-    expect(() => loadConfigFile(write(svc('{ path: /countries, methods: [GET], cache: { strategy: LRU, ttl: 60, key: PATH, shared: true } }')))).not.toThrow();
-    expect(() => loadConfigFile(write(svc('{ path: /public, methods: [GET], bypass: [AUTH], cache: { strategy: LRU, ttl: 60, key: PATH } }')))).not.toThrow();
+  it('stays quiet for per-user keys and for anonymous routes', () => {
+    expect(cacheWarnings(svc('{ path: /me, methods: [GET], cache: { strategy: LRU, ttl: 60, key: PATH_QUERY_USER } }'))).toHaveLength(0);
+    expect(cacheWarnings(svc('{ path: /public, methods: [GET], bypass: [AUTH], cache: { strategy: LRU, ttl: 60, key: PATH } }'))).toHaveLength(0);
   });
 });

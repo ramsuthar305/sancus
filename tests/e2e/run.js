@@ -173,8 +173,8 @@ async function flushRedis() {
     check('check: valid dir exits 0 and lists services', /OK\s+demo\.yml/.test(out));
     let bad = null; try { execFileSync('node', [CHECK, path.join(tmp, 'bad')], { stdio: 'pipe' }); } catch (e) { bad = e; }
     check('check: invalid config exits 1 with an error', bad && bad.status === 1 && /ERROR/.test(String(bad.stderr)), bad && String(bad.stderr));
-    let shared = null; try { execFileSync('node', [CHECK, path.join(tmp, 'shared')], { stdio: 'pipe' }); } catch (e) { shared = e; }
-    check('security 1: auth-required route with a shared cache key is refused', shared && shared.status === 1 && /PATH_QUERY_USER/.test(String(shared.stderr)), shared ? String(shared.stderr) : 'accepted');
+    const sharedOut = execFileSync('node', [CHECK, path.join(tmp, 'shared')]).toString();
+    check('security 1: shared cache key on a login route loads, with a warning naming the route', /^OK/m.test(sharedOut) && /WARN .*\/me.*PATH_QUERY_USER/.test(sharedOut), sharedOut);
 
     // ---- admin ----
     let r = await get(`${GW}/health/ready`);

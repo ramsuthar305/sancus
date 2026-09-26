@@ -82,7 +82,7 @@ apis:
       - { path: /rl,     methods: [GET], bypass: [AUTH, GEO_FENCE], rateLimit: { perMinute: 100000000 } }
       - { path: /auth,   methods: [GET], bypass: [GEO_FENCE] }
       - { path: /cached, methods: [GET], bypass: [AUTH, GEO_FENCE], cache: { strategy: LRU, ttl: 300, key: PATH } }
-      - { path: /all,    methods: [GET], bypass: [GEO_FENCE], rateLimit: { perMinute: 100000000, key: USER }, cache: { strategy: LRU, ttl: 300, key: PATH, shared: true } }
+      - { path: /all,    methods: [GET], bypass: [GEO_FENCE], rateLimit: { perMinute: 100000000, key: USER }, cache: { strategy: LRU, ttl: 300, key: PATH } }
 `);
   fs.writeFileSync(path.join(tmp, 'in.json'), '{"type":"FeatureCollection","features":[]}');
 

@@ -86,10 +86,9 @@ apis:
           browserTtl: 60            # emits Cache-Control to clients
           varyHeaders: [Accept-Language]
           statusCodes: [200, 404]   # default 200, 301, 404
-          shared: true              # every user gets the same answer; required when the route knows the user
 ```
 
-A cached route that requires auth, or uses `resolveUser`, must use `key: PATH_QUERY_USER` or say `shared: true`. Sancus refuses to load it otherwise, because a shared key would hand one user's response to the next.
+On a route that knows the user (auth required, or `resolveUser`), the cache key decides who shares an entry: `PATH_QUERY_USER` keeps one per user, `PATH` and `PATH_QUERY` keep one for everyone. Use a shared key only when every user gets the same response. `npm run check` and startup print a warning for each such route, so a copied key doesn't go unnoticed.
 
 Validate without starting the gateway:
 

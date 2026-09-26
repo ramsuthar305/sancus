@@ -86,8 +86,7 @@
                     "key": { "type": "string", "enum": ["PATH", "PATH_QUERY", "PATH_QUERY_USER"] },
                     "browserTtl": { "type": "integer", "minimum": 0 },
                     "varyHeaders": { "type": "array", "items": { "type": "string" } },
-                    "statusCodes": { "type": "array", "items": { "type": "integer", "minimum": 100, "maximum": 599 } },
-                    "shared": { "type": "boolean" }
+                    "statusCodes": { "type": "array", "items": { "type": "integer", "minimum": 100, "maximum": 599 } }
                   }
                 },
                 "headers": { "$ref": "#/definitions/headers" },
