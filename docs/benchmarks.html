@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>We came last · Sancus</title>
-<meta name="description" content="Sancus measured against Kong, APISIX, Traefik and KrakenD under the same conditions, what the measurements found, and what we changed.">
-<meta property="og:title" content="We came last · Sancus">
-<meta property="og:description" content="Sancus measured against Kong, APISIX, Traefik and KrakenD under the same conditions, what the measurements found, and what we changed.">
+<title>How fast it is · Sancus</title>
+<meta name="description" content="Measured throughput and latency for Sancus, feature by feature, how we found and fixed the slow parts, and how to run the benchmarks yourself.">
+<meta property="og:title" content="How fast it is · Sancus">
+<meta property="og:description" content="Measured throughput and latency for Sancus, feature by feature, how we found and fixed the slow parts, and how to run the benchmarks yourself.">
 <meta property="og:image" content="assets/social-card.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#0c1b20">
@@ -23,70 +23,69 @@
 <div class="layout">
 <nav class="rail" id="nav" aria-label="Documentation">
 <a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
-<div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html" aria-current="page"><span class="n">5</span>We came last</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html" aria-current="page"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
 <div class="group">Project</div>
 <a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
 </nav>
 <main>
 
 <p class="chapter">Chapter 5</p>
-<h1>We came last.</h1>
-<p class="lede">We put Sancus next to four gateways we admire, gave them the same machine and the same upstream, and measured. Sancus finished fifth of five. The measuring also found a bug and a library that cost us 42 percent.</p>
+<h1>How fast it is.</h1>
+<p class="lede">Kettle peaks at 1,800 requests a second at dinner time. Before putting Sancus in front of checkout, Asha wanted to know what the gateway costs per request, what each feature adds, and how much headroom there is. These are the numbers, and the script to reproduce them.</p>
 
-<h2>The race</h2>
-<p>Each gateway forwarded <code>GET /echo</code> to the same nginx upstream in one Docker network. wrk sent the load from inside that network. Two CPUs, 4 GB, access logs off, median of two 15-second runs. On its own, the upstream answered 344,000 requests a second.</p>
-<div class="bars"><div class="bar"><span>APISIX 3.9</span><div class="track"><div class="fill" style="width:96.3%"></div></div><span class="val">86,700</span></div><div class="bar"><span>Kong 3.7</span><div class="track"><div class="fill" style="width:86.9%"></div></div><span class="val">78,200</span></div><div class="bar"><span>Traefik 3.1</span><div class="track"><div class="fill" style="width:54.3%"></div></div><span class="val">48,900</span></div><div class="bar"><span>KrakenD 2.7</span><div class="track"><div class="fill" style="width:30.8%"></div></div><span class="val">27,700</span></div><div class="bar me"><span>Sancus 2.0</span><div class="track"><div class="fill" style="width:13.3%"></div></div><span class="val">12,000</span></div></div>
-<table>
-<tr><th>Gateway</th><th>Runs on</th><th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>RSS MB</th></tr>
-<tr><td>APISIX 3.9</td><td>nginx, LuaJIT</td><td>86,700</td><td>1.1</td><td>2.4</td><td>78</td></tr>
-<tr><td>Kong 3.7</td><td>nginx, LuaJIT</td><td>78,200</td><td>1.2</td><td>2.7</td><td>285</td></tr>
-<tr><td>Traefik 3.1</td><td>Go</td><td>48,900</td><td>1.9</td><td>6.3</td><td>116</td></tr>
-<tr><td>KrakenD 2.7</td><td>Go</td><td>27,700</td><td>3.4</td><td>10.5</td><td>37</td></tr>
-<tr><td>Sancus 2.0</td><td>Node 22, 2 workers</td><td>12,000</td><td>7.1</td><td>22.4</td><td>179</td></tr>
-</table>
-<p>Trust the order more than the digits. In a two-CPU VM the gateway, nginx and wrk fight for the same cores, and Kong scored 58k in one session and 78k in the next. The order held across four sessions.</p>
+<div class="stat">
+<div><b>21,398</b><span>requests a second, one process</span></div>
+<div><b>37,130</b><span>requests a second, four workers, auth + limit + cache</span></div>
+<div><b>0.3 ms</b><span>added at the median, at a steady 2,000 req/s</span></div>
+<div><b>0</b><span>errors across every run</span></div>
+</div>
 
-<h2>The first run went badly</h2>
-<div class="scene"><time>Run 1</time><p>Sancus managed 11,000 requests a second and returned 502 to one request in five. The logs said <code>EADDRNOTAVAIL</code>: the laptop had run out of ports.</p><p>The connection pool to the upstream kept 32 idle connections and threw away the rest. At 100 connections of load, Sancus opened and closed sockets as fast as it could. In eight seconds it left 16,000 of them in TIME_WAIT.</p></div>
-<p>One setting fixed it: keep as many idle connections as busy ones. The 502s stopped. This bug also sat in the production code this project grew out of, where it showed up as the odd unexplained 502 at peak.</p>
+<h2>How we measured</h2>
+<p>One gateway process on an Apple M4 laptop, Node 24, a local Redis, and a four-process Node upstream that answers 220,000 requests a second on its own, so the upstream is never the bottleneck. wrk sends load over 100 connections for 15 seconds, after a 5-second warm-up. We report the median of two runs. Any non-2xx response fails the run.</p>
+<p>"As shipped" means the default config, with the access log and the per-IP limiter on. "Tuned" means <code>LOG_LEVEL=warn</code> with the per-IP limiter off, the usual setting behind a load balancer that already protects per IP.</p>
 
-<h2>Where the time went</h2>
-<p>With the errors gone, Sancus still did 14,900 requests a second where a bare Node proxy does 42,000. We built four proxies of increasing weight and measured each against the same upstream:</p>
+<h2>Every feature, measured</h2>
+<table><tr><th>Scenario</th><th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>CPU %</th><th>RSS MB</th></tr><tr><td>direct upstream (baseline)</td><td>219,058</td><td>0.394</td><td>1.29</td><td>–</td><td>–</td></tr><tr><td>proxy, as shipped (info log + IP limiter)</td><td>16,574</td><td>5.66</td><td>8.81</td><td>121</td><td>283</td></tr><tr><td>proxy, tuned</td><td>21,398</td><td>4.45</td><td>7.98</td><td>125</td><td>269</td></tr><tr><td>proxy + route rate limit</td><td>18,313</td><td>5.13</td><td>8.7</td><td>125</td><td>278</td></tr><tr><td>proxy + auth (cached token)</td><td>18,722</td><td>5</td><td>8.68</td><td>126</td><td>266</td></tr><tr><td>cache HIT</td><td>32,376</td><td>2.89</td><td>7.38</td><td>133</td><td>274</td></tr><tr><td>auth + rate limit + cache HIT</td><td>21,494</td><td>4.36</td><td>8.18</td><td>131</td><td>268</td></tr><tr><td>proxy, tuned, 4 workers</td><td>30,814</td><td>2.9</td><td>9.56</td><td>439</td><td>996</td></tr><tr><td>auth + rate limit + cache HIT, 4 workers</td><td>37,130</td><td>2.44</td><td>7.56</td><td>441</td><td>1009</td></tr></table>
+<p>Read it top to bottom as a price list. The access log at <code>info</code> costs about 20 percent. A Redis-backed rate limit or a cached token check costs about 13 percent each. A cache hit is the fastest path because the upstream drops out of the picture. Four workers add 1.4 to 1.7 times on this laptop, where wrk competes for the same cores; on a dedicated machine they scale closer to the core count.</p>
+
+<h2>At a steady 2,000 a second</h2>
+<p>The table above pushes the gateway to its limit, so most of that latency is queueing. Real traffic is steadier. Here oha holds the rate at 2,000 requests a second.</p>
+<table><tr><th>Scenario</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>p99.9 ms</th></tr><tr><td>direct upstream (baseline)</td><td>0.128</td><td>0.208</td><td>0.411</td><td>3.094</td></tr><tr><td>proxy, tuned</td><td>0.411</td><td>0.816</td><td>6.621</td><td>24.307</td></tr><tr><td>auth + rate limit + cache HIT</td><td>0.5</td><td>0.759</td><td>7.441</td><td>106.675</td></tr><tr><td>proxy, tuned, 4 workers</td><td>0.4</td><td>0.783</td><td>3.035</td><td>16.275</td></tr></table>
+<p>The upstream on its own answers in 0.13 ms. Through one Sancus process it takes 0.41 ms, so the gateway adds about 0.3 ms at the median. The p99.9 spikes are garbage collection pauses in V8; more workers spread them out.</p>
+
+<h2>What the first run found</h2>
+<div class="scene"><time>Run 1</time><p>Sancus returned 502 to one request in five. The logs said <code>EADDRNOTAVAIL</code>: the machine had run out of ports.</p><p>The connection pool to the upstream kept 32 idle connections and threw away the rest. Under load, Sancus opened and closed sockets as fast as it could, and left 16,000 of them in TIME_WAIT in eight seconds.</p></div>
+<p>One setting fixed it: keep as many idle connections as busy ones. Every table on this page has zero errors.</p>
+
+<h2>Where the time went, and what we changed</h2>
+<p>To see which part of a request cost the most, we measured four proxies of increasing weight against the same upstream.</p>
 <table>
 <tr><th>Stack</th><th>req/s</th><th>CPU per request</th></tr>
 <tr><td>Bare Node request pipe</td><td>42,100</td><td>24 µs</td></tr>
 <tr><td>The http-proxy library</td><td>24,200</td><td>41 µs</td></tr>
 <tr><td>Express plus http-proxy</td><td>15,800</td><td>63 µs</td></tr>
-<tr><td>Sancus, every feature</td><td>14,900</td><td>67 µs</td></tr>
+<tr><td>Sancus with every feature, before the change</td><td>14,900</td><td>67 µs</td></tr>
 </table>
-<p>The gateway logic, all of it, cost 4 µs. The proxy library cost 17. We replaced it with a direct <code>http.request</code> pipe and kept Express.</p>
+<p>All of the gateway's own logic cost 4 µs. The proxy library cost 17. We replaced it with a direct <code>http.request</code> pipe.</p>
 <div class="stat">
 <div><b>14.9k → 21.4k</b><span>requests a second, one process</span></div>
-<div><b>10.9 → 8.0 ms</b><span>p99 latency at saturation</span></div>
-<div><b>0.3 ms</b><span>added at the median, at a steady 2,000 req/s</span></div>
+<div><b>10.9 → 8.0 ms</b><span>p99 at saturation</span></div>
 </div>
-<p>Dropping Express would reach about 35,000 per process. Four workers already pass that, so it waits.</p>
 
-<h2>What last place means for you</h2>
-<p>Per core, Sancus does a seventh of APISIX and half of KrakenD. That is the price of a JavaScript HTTP stack. One process handles about 21,000 requests a second; a four-worker pod handles 30,000 to 37,000. Kettle peaks at 1,800. At that load the gateway adds 0.3 ms at the median and the team's time goes to the product.</p>
-<p>If one node of yours has to carry 50,000 a second, the right door is APISIX or Kong.</p>
-
-<h2>Every feature, measured</h2>
-<p>One process on an Apple M4 laptop, Node 24, local Redis, a 4-process Node upstream that does 220,000 on its own. <code>wrk -t4 -c100 -d15s</code>, median of two runs, zero errors. "As shipped" has the access log and the IP limiter on. "Tuned" runs <code>LOG_LEVEL=warn</code> with the IP limiter off.</p>
-<table><tr><th>Scenario</th><th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>CPU %</th><th>RSS MB</th></tr><tr><td>direct upstream (baseline)</td><td>219,058</td><td>0.394</td><td>1.29</td><td>–</td><td>–</td></tr><tr><td>proxy, as shipped (info log + IP limiter)</td><td>16,574</td><td>5.66</td><td>8.81</td><td>121</td><td>283</td></tr><tr><td>proxy, tuned</td><td>21,398</td><td>4.45</td><td>7.98</td><td>125</td><td>269</td></tr><tr><td>proxy + route rate limit</td><td>18,313</td><td>5.13</td><td>8.7</td><td>125</td><td>278</td></tr><tr><td>proxy + auth (cached token)</td><td>18,722</td><td>5</td><td>8.68</td><td>126</td><td>266</td></tr><tr><td>cache HIT</td><td>32,376</td><td>2.89</td><td>7.38</td><td>133</td><td>274</td></tr><tr><td>auth + rate limit + cache HIT</td><td>21,494</td><td>4.36</td><td>8.18</td><td>131</td><td>268</td></tr><tr><td>proxy, tuned, 4 workers</td><td>30,814</td><td>2.9</td><td>9.56</td><td>439</td><td>996</td></tr><tr><td>auth + rate limit + cache HIT, 4 workers</td><td>37,130</td><td>2.44</td><td>7.56</td><td>441</td><td>1009</td></tr></table>
-
-<h2>At a steady 2,000 a second</h2>
-<p>The table above pushes to saturation, so its latency is mostly queueing. Here oha holds the rate steady, closer to what a real service sees.</p>
-<table><tr><th>Scenario</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>p99.9 ms</th></tr><tr><td>direct upstream (baseline)</td><td>0.128</td><td>0.208</td><td>0.411</td><td>3.094</td></tr><tr><td>proxy, tuned</td><td>0.411</td><td>0.816</td><td>6.621</td><td>24.307</td></tr><tr><td>auth + rate limit + cache HIT</td><td>0.5</td><td>0.759</td><td>7.441</td><td>106.675</td></tr><tr><td>proxy, tuned, 4 workers</td><td>0.4</td><td>0.783</td><td>3.035</td><td>16.275</td></tr></table>
-<p>The p99.9 spikes are garbage collection pauses in V8. More workers spread them out.</p>
+<h2>Sizing for your traffic</h2>
+<table>
+<tr><th>Your peak</th><th>Start with</th></tr>
+<tr><td>up to 5,000 req/s</td><td>2 pods, 1 CPU each, <code>WORKERS=1</code> (two for availability)</td></tr>
+<tr><td>5,000 to 20,000 req/s</td><td>2 to 3 pods, 2 CPU each, <code>WORKERS=2</code></td></tr>
+<tr><td>20,000 to 60,000 req/s</td><td>pods with 4 CPU and <code>WORKERS=4</code>, scaled by the HPA on CPU</td></tr>
+</table>
+<p>Leave headroom: plan for half the measured maximum, and turn on caching for the routes that repeat. Kettle runs two pods with one CPU each and sits under 10 percent CPU at dinner.</p>
 
 <h2>Run it yourself</h2>
-<pre><code class="language-bash">brew install wrk oha
+<pre><code class="language-bash">brew install wrk oha      # or your package manager
 npm ci &amp;&amp; npm run build
-npm run bench                     # every feature; results in tests/bench/results/
-docker build -t sancus:slim .
-tests/bench/compare/compare.sh    # Sancus against Traefik, Kong, APISIX, KrakenD</code></pre>
-<p>Run it on a Linux machine with dedicated cores and send a pull request with your numbers. Both scripts print the exact commands and stop on any non-2xx response.</p>
+npm run bench             # results in tests/bench/results/</code></pre>
+<p>The script starts its own upstream and gateways, prints the exact wrk and oha commands, and stops on any non-2xx response. Run it on your own hardware and you have numbers for your capacity plan.</p>
 
 <nav class="next" aria-label="Pages"><a href="use-cases.html"><small>Previous</small><b>Three teams</b></a><a class="fwd" href="demo.html"><small>Next</small><b>The practice run</b></a></nav>
 <footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>

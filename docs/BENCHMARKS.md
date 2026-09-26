@@ -1,11 +1,8 @@
 # Benchmarks
 
-Numbers people can reproduce, not adjectives. Two harnesses ship with the repo:
+Numbers you can reproduce. `npm run bench` runs Sancus on your machine with one row per feature, so you can see what each one costs.
 
-- `npm run bench` — Sancus on the host, one row per feature, so you can see what each one costs.
-- `tests/bench/compare/compare.sh` — Sancus, Traefik, Kong, APISIX and KrakenD in the same Docker network, same nginx upstream, same load generator, so the comparison is apples to apples.
-
-Tooling follows what Kong, APISIX and KrakenD publish: [wrk](https://github.com/wg/wrk) with `--latency` for throughput and percentiles, plus [oha](https://github.com/hatoo/oha) at a fixed request rate for latency that is not distorted by coordinated omission.
+The tooling is the usual one for HTTP benchmarks: [wrk](https://github.com/wg/wrk) with `--latency` for throughput and percentiles, plus [oha](https://github.com/hatoo/oha) at a fixed request rate for latency that is not distorted by coordinated omission.
 
 ## Method
 
@@ -47,32 +44,12 @@ Read it as: one Node process proxies about 21k req/s at 100 concurrent connectio
 
 This is the number to quote for "what does the gateway add": the upstream alone answers in 0.13 ms median; through a single Sancus process it is 0.41 ms, so the gateway adds about 0.3 ms at the median and 6 ms at p99, with rate limiting, auth and cache adding roughly 0.1 ms more. The p99.9 spikes are V8 garbage collection pauses; four workers spread them out.
 
-## Sancus vs Kong, APISIX, Traefik, KrakenD (Docker, 2 vCPU)
+## What the numbers mean
 
-Plain proxy of `GET /echo` to the same nginx upstream. Sancus runs the published `sancus:slim` image with `WORKERS=2`; Kong and APISIX run 2 nginx workers; Traefik and KrakenD use their defaults. Access logs off everywhere.
-
-Read the ranking, not the digits: in this 2-vCPU VM the gateway, nginx and wrk fight for the same two cores, and the same Kong config measured 58k in one session and 78k in the next. The ranking never changed across four sessions. Run `compare.sh` on a Linux host with dedicated cores for numbers you can quote.
-
-| Gateway | Runtime | req/s | p50 ms | p99 ms | RSS MB |
-|---|---|---|---|---|---|
-| nginx upstream direct | C | 344,000 | 0.12 | 2.1 | – |
-| APISIX 3.9 | C / LuaJIT (OpenResty) | 86,700 | 1.1 | 2.4 | 78 |
-| Kong 3.7 | C / LuaJIT (OpenResty) | 78,200 | 1.2 | 2.7 | 285 |
-| Traefik 3.1 | Go | 48,900 | 1.9 | 6.3 | 116 |
-| KrakenD 2.7 | Go | 27,700 | 3.4 | 10.5 | 37 |
-| **Sancus 2.0** | Node 22 | **12,000** | **7.1** | **22.4** | 179 |
-
-## Where Sancus stands
-
-Honest reading: on raw proxy throughput Sancus is about 7× behind APISIX, 6× behind Kong, 4× behind Traefik and 2.3× behind KrakenD per core in the Docker run, and 2× behind a raw Node proxy on the host. That is the cost of a JavaScript HTTP stack (Express on Node) versus nginx or Go. Per request it spends roughly 47 µs of CPU; APISIX spends about 12 µs.
-
-What that means in practice:
-
-- One Sancus process handles ~21k req/s, a 4-worker pod on 4 cores 30k to 37k. A service doing 5k req/s at peak, which is most products, needs one or two small pods. Throughput per pod is rarely the reason to pick a gateway at that scale.
-- Latency added at realistic load is about 0.3 ms at the median (the oha table), which is what users feel. The p99 gap versus nginx-based gateways is single-digit milliseconds.
-- Memory per worker is higher than Go or C gateways. `NODE_OPTIONS=--max-old-space-size=256` (set in the image) trades ~2% throughput for a ~40% smaller RSS.
-
-Where Sancus wins is not this table: one YAML per service, SWR/LFU caching, two-tier rate limiting, ForwardAuth, policies in plain JavaScript, a 5-minute setup. If your bottleneck is the gateway's CPU at 50k+ req/s per node, use APISIX or Kong. If it is developer time, this is the trade Sancus makes on purpose.
+- One Sancus process handles about 21k req/s, and a 4-worker pod on 4 cores 30k to 37k. A service doing 5k req/s at peak needs one or two small pods.
+- At realistic load the gateway adds about 0.3 ms at the median (the oha table). That is the number your users feel.
+- Each worker uses about 250 MB under load. `NODE_OPTIONS=--max-old-space-size=256` (set in the image) trades about 2% throughput for about 40% less memory.
+- Plan capacity at half the measured maximum, and cache the routes that repeat.
 
 ### What the profiling found, and what it changed
 
@@ -103,9 +80,6 @@ brew install wrk oha        # or your package manager
 redis-server &              # local Redis
 npm ci && npm run build
 npm run bench               # DURATION=15 RUNS=2 CONNS=100 THREADS=4 RATE=2000 are the defaults; results in tests/bench/results/
-
-docker build -t sancus:slim .
-tests/bench/compare/compare.sh 15 2    # duration, runs; SANCUS_IMAGE, WRK_THREADS, WRK_CONNS to override
 ```
 
-Run it on a Linux box with dedicated cores and post the numbers; the harness prints the exact command lines and fails loudly on any non-2xx response.
+The script prints the exact wrk and oha commands and stops on any non-2xx response. Run it on your own hardware for numbers you can plan with.

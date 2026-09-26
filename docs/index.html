@@ -23,7 +23,7 @@
 <div class="layout">
 <nav class="rail" id="nav" aria-label="Documentation">
 <a class="brand" href="index.html"><svg width="24" height="26" viewBox="0 0 264 278" aria-hidden="true"><rect width="264" height="44" rx="7" fill="#f2a93b"/><rect x="16" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><rect x="200" y="48" width="48" height="230" rx="7" fill="#f2a93b"/><circle cx="132" cy="170" r="34" fill="#7fe0c3"/></svg> Sancus</a>
-<div class="group">The story</div><a class="item" href="index.html" aria-current="page"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>We came last</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
+<div class="group">The story</div><a class="item" href="index.html" aria-current="page"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>How fast it is</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
 <div class="group">Project</div>
 <a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
 </nav>
@@ -45,6 +45,27 @@
 <div class="scene"><time>03:05</time><p>Asha blocks the partner's key by hand and checkout recovers. Then Asha opens the three codebases side by side.</p><p>Menu checks tokens with a library. Orders checks them with a copy of that library from two versions ago. Search caches in memory, so each pod has its own cache. Three services, three front doors, three sets of locks, and nobody holds the list.</p></div>
 <figure><img data-asset src="assets/night-oncall.webp" alt="A person at a kitchen table at night, lit by a laptop, with three small glowing doors on the screen" loading="lazy" onerror="this.classList.add('missing')"></figure>
 <p>The fix the team settled on the next morning was one door in front of all three. That door is Sancus.</p>
+
+<h2>Why a shared door</h2>
+<p>Each of your services has jobs that have nothing to do with what it is for. It checks the token. It decides if a caller is sending too much. It caches the answers people ask for over and over. It tags requests so you can trace them in the logs. When every service does these jobs itself, each one does them a little differently, and the gaps only show up at 2 a.m.</p>
+<p>Sancus takes those jobs out of your services and does them once, at the front. Your services get a request that already carries a verified user id and a request id, and that already fits inside its limit. The code you delete is code nobody has to keep in sync again.</p>
+
+<h2>When you need Sancus</h2>
+<div class="bento">
+<div class="w3"><h3>You run more than one service</h3><p>Two or three services is where copied auth and limiter code starts to drift. One config in front of all of them stops the drift.</p></div>
+<div class="w3"><h3>One caller can hurt everyone</h3><p>A partner script, a buggy app release or a scraper. Per-user and per-IP limits at the door stop it before your database feels it.</p></div>
+<div class="w2"><h3>People ask the same thing again and again</h3><p>Feeds, menus, search results, today's challenge. A shared cache answers them without your service.</p></div>
+<div class="w2"><h3>Phones or partners call your API</h3><p>You want one public address, standard rate-limit headers and clean error codes.</p></div>
+<div class="w2"><h3>You can't answer "what happened to request X?"</h3><p>One request id through every log line, and metrics per service and route.</p></div>
+</div>
+
+<h2>When you don't</h2>
+<ul>
+<li><strong>You run one app.</strong> A single service can do auth and limits in its own middleware. Add Sancus when the second service arrives.</li>
+<li><strong>You already run a gateway you are happy with.</strong> Keep it.</li>
+<li><strong>You need to check JWT signatures with no verifier service.</strong> Sancus asks a verifier you run. It does not check signatures itself.</li>
+<li><strong>One gateway node has to carry tens of thousands of requests a second.</strong> Sancus runs on Node. Look at the <a href="benchmarks.html">numbers in chapter 5</a> and size for them, or pick a gateway built on nginx.</li>
+</ul>
 
 <h2>What the door does</h2>
 
@@ -85,8 +106,6 @@ apis:
 <div class="w2"><h3>Reloads on save</h3><p>Edit a YAML file and the next request uses it. A broken file is refused.</p></div>
 </div>
 
-<h2>When to pick another door</h2>
-<p>Sancus runs on Node. APISIX and Kong run on nginx and push four to seven times more requests per core. If one gateway node has to carry 50,000 requests a second, use them. <a href="benchmarks.html">Chapter 5</a> shows the numbers with Sancus in last place. Pick Sancus when one person should be able to read the whole config, and the whole gateway, in an afternoon.</p>
 
 <nav class="next" aria-label="Pages"><a class="fwd" href="getting-started.html"><small>Next</small><b>Hour one</b></a></nav>
 <footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
