@@ -45,7 +45,10 @@ const RETRYABLE = new Set(['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENOTFO
 // Only connection-level failures mark a node unhealthy; a reset or timeout on one request is not the node's fault.
 const NODE_DOWN = new Set(['ECONNREFUSED', 'EHOSTUNREACH', 'ENOTFOUND', 'EAI_AGAIN']);
 
-const agentOptions = { keepAlive: true, maxSockets: 128, maxFreeSockets: 32, timeout: 60_000 };
+// One pool per gateway process. Free sockets are never capped below the busy limit: capping them
+// (the old maxFreeSockets: 32) destroyed idle sockets under load and exhausted ephemeral ports.
+const MAX_SOCKETS = Number(process.env.UPSTREAM_MAX_SOCKETS) || 256;
+const agentOptions = { keepAlive: true, maxSockets: MAX_SOCKETS, maxFreeSockets: MAX_SOCKETS, scheduling: 'lifo' as const, timeout: 60_000 };
 const httpAgent = new http.Agent(agentOptions);
 const httpsAgent = new https.Agent(agentOptions);
 

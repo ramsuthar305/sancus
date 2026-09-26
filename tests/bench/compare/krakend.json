@@ -1,0 +1,9 @@
+{
+  "version": 3,
+  "output_encoding": "no-op",
+  "extra_config": { "telemetry/logging": { "level": "ERROR", "stdout": true } },
+  "endpoints": [
+    { "endpoint": "/echo", "output_encoding": "no-op",
+      "backend": [ { "url_pattern": "/", "encoding": "no-op", "host": ["http://upstream:80"] } ] }
+  ]
+}

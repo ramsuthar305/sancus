@@ -13,7 +13,8 @@
     "lint": "eslint . --ext .ts",
     "lint-and-fix": "eslint . --ext .ts --fix",
     "prettier-watch": "onchange 'src/**/*.ts' -- prettier --write {{changed}}",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "bench": "node tests/bench/run.js"
   },
   "repository": {
     "type": "git",

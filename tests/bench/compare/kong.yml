@@ -1,0 +1,7 @@
+_format_version: "3.0"
+services:
+  - name: upstream
+    url: http://upstream:80
+    routes:
+      - name: bench
+        paths: [/]

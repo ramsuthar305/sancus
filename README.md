@@ -121,6 +121,8 @@ npm run check -- ./cfg   # another directory
 | `IP_BLOCK_THRESHOLD` / `IP_BLOCK_WINDOW_MS` / `IP_BLOCK_DURATION_MS` | `20` / `60000` / `900000` | Block an IP after N 429s in the window, for the duration |
 | `TRUSTED_IPS` | | Comma-separated IPs that skip both limiters |
 | `UPSTREAM_TIMEOUT_MS` / `UPSTREAM_UNHEALTHY_TTL_MS` | `60000` / `30000` | Default upstream timeout; how long a failed node is skipped |
+| `UPSTREAM_MAX_SOCKETS` | `256` | Keep-alive pool size per worker to each upstream |
+| `WORKERS` | `1` | Gateway processes sharing the port (`cluster`); use the core count of the pod |
 | `CACHE_LFU_MAX_ENTRIES` | `1000` | LFU eviction bound |
 | `KEEP_ALIVE_TIMEOUT_MS` | `125000` | Must exceed your load balancer's idle timeout |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | Drain window on SIGTERM before forced exit |
@@ -240,6 +242,12 @@ kubectl apply -k k8s/
 ```
 
 `k8s/` is a complete kustomize set: namespace, `sancus-env` ConfigMap, `sancus-secrets` Secret (example values, replace them), Deployment with liveness on `/health` and readiness on `/health/ready`, non-root security context, resource limits, ClusterIP Service, a generic nginx Ingress with ALB annotations in comments, HPA and PodDisruptionBudget. Set the image tag, hosts, upstream URLs and `TRUST_PROXY` for your network, and keep the load balancer idle timeout below `KEEP_ALIVE_TIMEOUT_MS`.
+
+---
+
+## 📈 Benchmarks
+
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md): ~15k req/s per process, sub-millisecond median overhead at 2k req/s, and a same-conditions comparison against Kong, APISIX, Traefik and KrakenD with the harness to reproduce it.
 
 ---
 
