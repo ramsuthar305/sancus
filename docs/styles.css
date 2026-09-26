@@ -199,3 +199,13 @@ img.missing + figcaption { display: none; }
 .hero-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 44%, rgba(12,27,32,0.88) 56%, rgba(12,27,32,0.92) 100%); pointer-events: none; }
 .hero-copy { z-index: 1; }
 @media (max-width: 1200px) { .hero-banner::after { display: none; } }
+
+/* introduction: six reasons, each with a spot illustration */
+.reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 26px 0 30px; max-width: 1040px; }
+.reason { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; }
+.reason img { width: 96px; height: 96px; border-radius: 10px; display: block; }
+.reason img.missing { display: block; visibility: hidden; }
+.reason h3 { margin: 2px 0 6px; font-size: 18px; }
+.reason p { margin: 0; font-size: 15px; color: var(--ink-2); }
+@media (max-width: 900px) { .reasons { grid-template-columns: 1fr; } .reason { grid-template-columns: 64px 1fr; } .reason img { width: 64px; height: 64px; } }
+.reason > .img-fallback { display: none; }
