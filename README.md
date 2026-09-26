@@ -1,3 +1,5 @@
+<p><img src="docs/assets/logo.svg" alt="Sancus" width="56"></p>
+
 # Sancus
 
 **Sancus** is a lightweight, Node.js-based **API Gateway** that sits at the edge of your architecture. One YAML file per upstream service gives you routing, pluggable auth, geo-fencing, two-tier rate limiting, Redis-backed response caching, resilience knobs, and the operational endpoints and headers other gateways use.
