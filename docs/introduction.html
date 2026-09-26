@@ -43,6 +43,7 @@
 <div class="w2"><h3>People ask the same thing again and again</h3><p>Feeds, menus, search results, today's challenge. A shared cache answers them without your service.</p></div>
 <div class="w2"><h3>Phones or partners call your API</h3><p>You want one public address, standard rate-limit headers and clean error codes.</p></div>
 <div class="w2"><h3>You can't answer "what happened to request X?"</h3><p>One request id through every log line, and metrics per service and route.</p></div>
+<div class="w6"><h3>You deploy on Kubernetes</h3><p><code>kubectl apply -k k8s/</code> gives you the gateway with probes, limits, an autoscaler and a disruption budget. We tested it on a real cluster: two rolling restarts under steady load served 580,000 requests with zero errors, pods stayed in service through a Redis restart and reconnected on their own, and a route added to the ConfigMap went live in under a minute with no restart. You bring Redis and your upstreams.</p></div>
 </div>
 
 <h2>Why we built it when good gateways already existed</h2>

@@ -45,6 +45,11 @@ if (ipLimiterEnabled && trustProxy === false) {
 }
 
 app.use(requestIdMiddleware);
+// While draining, ask keep-alive clients to reconnect, so they move to a pod that is staying.
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  if (lifecycle.shuttingDown) res.setHeader('Connection', 'close');
+  next();
+});
 app.use(accessLogger);
 app.use(metricsMiddleware);
 if (ipLimiterEnabled) app.use(new IPRateLimiter().middleware());
@@ -93,22 +98,28 @@ async function startServer() {
   server.keepAliveTimeout = keepAliveTimeout;
   server.headersTimeout = keepAliveTimeout + 1000;
 
-  // Graceful shutdown: readiness goes 503, stop accepting, drain in-flight, then exit.
+  // Graceful shutdown in two phases:
+  //  1. readiness turns 503 and responses carry `Connection: close`, but the server keeps
+  //     serving for SHUTDOWN_DELAY_MS so load balancers and Kubernetes endpoints stop routing here;
+  //  2. stop accepting, drain in-flight requests (up to SHUTDOWN_TIMEOUT_MS), exit.
+  const delayMs = Number(process.env.SHUTDOWN_DELAY_MS ?? 5000);
   const shutdown = (signal: string) => {
     if (lifecycle.shuttingDown) return;
     lifecycle.shuttingDown = true;
-    logger.info({ signal }, 'shutting down');
+    logger.info({ signal, delayMs }, 'shutting down: draining traffic');
     routeRegistry.close();
-    const force = setTimeout(() => {
-      logger.warn('shutdown timeout reached, exiting with open connections');
-      process.exit(1);
-    }, Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000).unref();
-    server.close(async () => {
-      clearTimeout(force);
-      await redisService.close();
-      process.exit(0);
-    });
-    server.closeIdleConnections?.();
+    setTimeout(() => {
+      const force = setTimeout(() => {
+        logger.warn('shutdown timeout reached, exiting with open connections');
+        process.exit(1);
+      }, Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000).unref();
+      server.close(async () => {
+        clearTimeout(force);
+        await redisService.close();
+        process.exit(0);
+      });
+      server.closeIdleConnections?.();
+    }, delayMs);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));

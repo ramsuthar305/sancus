@@ -10,6 +10,6 @@ data:
   ALLOWED_ORIGINS: https://app.example.com
   TRUST_PROXY: loopback, linklocal, uniquelocal   # your ingress/LB address space
   KEEP_ALIVE_TIMEOUT_MS: "125000"                # must exceed the LB idle timeout
-  CONFIG_WATCH: "false"                          # configs come from the image / a mounted volume
+  CONFIG_WATCH: "true"                           # reload k8s/api_configs edits without a restart
   YOUR_SERVICE_HOST: http://your-service.default.svc.cluster.local
   AUTH_URL: http://auth.default.svc.cluster.local

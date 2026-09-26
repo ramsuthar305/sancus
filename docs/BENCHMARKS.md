@@ -51,28 +51,6 @@ This is the number to quote for "what does the gateway add": the upstream alone 
 - Each worker uses about 250 MB under load. `NODE_OPTIONS=--max-old-space-size=256` (set in the image) trades about 2% throughput for about 40% less memory.
 - Plan capacity at half the measured maximum, and cache the routes that repeat.
 
-### What the profiling found, and what it changed
-
-To see where the per-request cost lives, four proxies were measured against the same upstream on the host (single process, 100 connections):
-
-| Stack | req/s | CPU per request |
-|---|---|---|
-| raw Node `http.request` pipe, no framework | 42,100 | 24 µs |
-| the `http-proxy` library alone | 24,200 | 41 µs |
-| Express + `http-proxy`, no gateway logic | 15,800 | 63 µs |
-| Sancus 2.0 before this change | 14,900 | 67 µs |
-
-All of Sancus's own logic (route matching, auth, rate limit, cache, policies, metrics, request ids) cost 6%. The `http-proxy` library cost 42% and Express 35%. So `http-proxy` was replaced with a direct `http.request` pipe (`src/services/proxy.service.ts`), keeping Express:
-
-| | before | after |
-|---|---|---|
-| proxy, tuned, 1 process | 14,900 req/s, p50 6.4 ms, p99 10.9 ms | 21,400 req/s, p50 4.5 ms, p99 8.0 ms |
-| auth + rate limit + cache HIT, 4 workers | 35,200 req/s | 37,100 req/s |
-
-The same benchmark run also caught a real bug: the upstream connection pool capped free sockets at 32, so under load it churned sockets, produced 16,000 TIME_WAIT entries in eight seconds and then failed with `EADDRNOTAVAIL` (502s). The pool is now uncapped (`UPSTREAM_MAX_SOCKETS`, default 256) and every table above has zero non-2xx responses.
-
-The remaining lever is Express itself: a plain `http` server with the same middleware as functions would land around 33k to 38k req/s per process. It is not done because four workers already pass that number, and it touches every middleware.
-
 ## Reproduce
 
 ```bash

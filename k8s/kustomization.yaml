@@ -10,3 +10,10 @@ resources:
   - ingress.yaml
   - hpa.yaml
   - pdb.yaml
+configMapGenerator:
+  - name: sancus-api-configs
+    namespace: sancus
+    files:
+      - api_configs/your_service_name.yml   # add one line per service file
+    options:
+      disableNameSuffixHash: true           # stable name, so edits reload in place

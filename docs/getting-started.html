@@ -42,7 +42,7 @@ docker compose up</code></pre>
 <span class="dim">sancus-1  |</span> {"level":30,"port":3000,"msg":"Sancus gateway listening"}</div>
 <pre><code class="language-bash">curl localhost:3000/health/ready</code></pre>
 <div class="log" role="img" aria-label="terminal output"><span class="ok">{"status":"UP","configLoadedAt":"2026-09-26T09:01:12.402Z"}</span></div>
-<p><code>/health/ready</code> says UP only once the config has loaded and Redis answers. Kubernetes will ask the same question later.</p>
+<p><code>/health/ready</code> says UP once the config has loaded. If Redis is down it says DEGRADED and keeps serving. Kubernetes will ask the same question later.</p>
 
 <div class="scene"><time>09:10</time><p>Asha writes orders.yml, the twelve lines from chapter 1, and points ORDERS at the running service. No restart. Sancus reloads when the file is saved.</p></div>
 <pre><code class="language-bash">curl -i localhost:3000/api/orders/v1/orders/881 -H &quot;Authorization: Bearer $TOKEN&quot;</code></pre>

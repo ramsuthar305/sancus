@@ -19,12 +19,15 @@ router.get('/health', (_req, res) => {
 });
 
 router.get('/health/ready', async (_req, res) => {
+  // Ready = config loaded and not draining. Redis is reported, not required: every Redis-backed
+  // feature fails open, so pulling pods out of service during a Redis blip would turn a degraded
+  // gateway into an outage.
   const problems: string[] = [];
   if (lifecycle.shuttingDown) problems.push('shutting down');
   if (!routeRegistry.isLoaded) problems.push('config not loaded');
-  if (!(await redisService.isAvailable())) problems.push('redis unreachable');
   if (problems.length) return res.status(503).json({ status: 'DOWN', problems });
-  return res.json({ status: 'UP', configLoadedAt: routeRegistry.loadedAt });
+  const redis = (await redisService.isAvailable()) ? 'up' : 'down';
+  return res.json({ status: redis === 'up' ? 'UP' : 'DEGRADED', redis, configLoadedAt: routeRegistry.loadedAt });
 });
 
 const adminAuth = (req: Request, res: Response, next: NextFunction) => {

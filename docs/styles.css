@@ -174,7 +174,7 @@ img.missing + figcaption { display: none; }
   .hero, .pair, .next { grid-template-columns: 1fr; }
   .next .fwd { grid-column: auto; }
   .bento { grid-template-columns: 1fr; }
-  .bento .w3, .bento .w2, .bento .w4 { grid-column: auto; }
+  .bento .w3, .bento .w2, .bento .w4, .bento .w6 { grid-column: auto; }
   body { font-size: 16px; }
   .scene p { font-size: 17px; }
   .bar { grid-template-columns: 96px 1fr 64px; font-size: 13px; }
@@ -209,3 +209,4 @@ img.missing + figcaption { display: none; }
 .reason p { margin: 0; font-size: 15px; color: var(--ink-2); }
 @media (max-width: 900px) { .reasons { grid-template-columns: 1fr; } .reason { grid-template-columns: 64px 1fr; } .reason img { width: 64px; height: 64px; } }
 .reason > .img-fallback { display: none; }
+.bento .w6 { grid-column: span 6; }

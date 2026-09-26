@@ -53,25 +53,6 @@
 <table><tr><th>Scenario</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>p99.9 ms</th></tr><tr><td>direct upstream (baseline)</td><td>0.128</td><td>0.208</td><td>0.411</td><td>3.094</td></tr><tr><td>proxy, tuned</td><td>0.411</td><td>0.816</td><td>6.621</td><td>24.307</td></tr><tr><td>auth + rate limit + cache HIT</td><td>0.5</td><td>0.759</td><td>7.441</td><td>106.675</td></tr><tr><td>proxy, tuned, 4 workers</td><td>0.4</td><td>0.783</td><td>3.035</td><td>16.275</td></tr></table>
 <p>The upstream on its own answers in 0.13 ms. Through one Sancus process it takes 0.41 ms, so the gateway adds about 0.3 ms at the median. The p99.9 spikes are garbage collection pauses in V8; more workers spread them out.</p>
 
-<h2>What the first run found</h2>
-<div class="scene"><time>Run 1</time><p>Sancus returned 502 to one request in five. The logs said <code>EADDRNOTAVAIL</code>: the machine had run out of ports.</p><p>The connection pool to the upstream kept 32 idle connections and threw away the rest. Under load, Sancus opened and closed sockets as fast as it could, and left 16,000 of them in TIME_WAIT in eight seconds.</p></div>
-<p>One setting fixed it: keep as many idle connections as busy ones. Every table on this page has zero errors.</p>
-
-<h2>Where the time went, and what we changed</h2>
-<p>To see which part of a request cost the most, we measured four proxies of increasing weight against the same upstream.</p>
-<table>
-<tr><th>Stack</th><th>req/s</th><th>CPU per request</th></tr>
-<tr><td>Bare Node request pipe</td><td>42,100</td><td>24 µs</td></tr>
-<tr><td>The http-proxy library</td><td>24,200</td><td>41 µs</td></tr>
-<tr><td>Express plus http-proxy</td><td>15,800</td><td>63 µs</td></tr>
-<tr><td>Sancus with every feature, before the change</td><td>14,900</td><td>67 µs</td></tr>
-</table>
-<p>All of the gateway's own logic cost 4 µs. The proxy library cost 17. We replaced it with a direct <code>http.request</code> pipe.</p>
-<div class="stat">
-<div><b>14.9k → 21.4k</b><span>requests a second, one process</span></div>
-<div><b>10.9 → 8.0 ms</b><span>p99 at saturation</span></div>
-</div>
-
 <h2>Sizing for your traffic</h2>
 <table>
 <tr><th>Your peak</th><th>Start with</th></tr>

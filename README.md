@@ -127,7 +127,8 @@ npm run check -- ./cfg   # another directory
 | `WORKERS` | `1` | Gateway processes sharing the port (`cluster`); use the core count of the pod |
 | `CACHE_LFU_MAX_ENTRIES` | `1000` | LFU eviction bound |
 | `KEEP_ALIVE_TIMEOUT_MS` | `125000` | Must exceed your load balancer's idle timeout |
-| `SHUTDOWN_TIMEOUT_MS` | `10000` | Drain window on SIGTERM before forced exit |
+| `SHUTDOWN_DELAY_MS` | `5000` | After SIGTERM, keep serving (readiness 503, `Connection: close`) this long so load balancers stop routing here |
+| `SHUTDOWN_TIMEOUT_MS` | `10000` | Then drain in-flight requests for up to this long before a forced exit |
 | `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie` / | pino level; headers masked or removed from access logs |
 | `ALERT_WEBHOOK_URL` / `ALERT_COOLDOWN_MS` | / `60000` | Slack/Discord-compatible webhook (`DISCORD_WEBHOOK_URL` accepted); per-key dedupe |
 | `ADMIN_TOKEN` | | If set, `/metrics`, `/routes` and `/cache` require `Authorization: Bearer <token>` |
@@ -238,7 +239,7 @@ Unknown policy names or invalid configs reject the config file at startup and on
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Liveness, always 200 |
-| `GET /health/ready` | 503 until config is loaded and Redis answers, and during shutdown |
+| `GET /health/ready` | 503 until config is loaded, and during shutdown; reports Redis as degraded without failing |
 | `GET /metrics` | Prometheus: `sancus_http_requests_total`, `sancus_http_request_duration_seconds`, `sancus_upstream_duration_seconds`, `sancus_upstream_up`, `sancus_config_reloads_total`, `sancus_cache_events_total`, `sancus_rate_limited_total` |
 | `GET /routes` | Loaded services, routes, and registered policies |
 | `DELETE /cache/:service` | Purge every cached response for a service |

@@ -117,7 +117,8 @@ class RedisService {
     this.redis = new Redis(redisUrl, {
       enableOfflineQueue: false,
       maxRetriesPerRequest: 3,
-      retryStrategy: (attempt) => (attempt > 3 ? null : attempt * 50),
+      // Never give up: Redis restarts and failovers must heal without restarting the gateway.
+      retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
       lazyConnect: true,
       // Connection pool settings
       keepAlive: 30000, // Keep connections alive

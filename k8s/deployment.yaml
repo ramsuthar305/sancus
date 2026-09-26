@@ -12,7 +12,7 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: sancus }
     spec:
-      terminationGracePeriodSeconds: 30   # > SHUTDOWN_TIMEOUT_MS so in-flight requests drain
+      terminationGracePeriodSeconds: 30   # > SHUTDOWN_DELAY_MS + SHUTDOWN_TIMEOUT_MS (5 s + 10 s)
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -40,9 +40,10 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false   # multipart uploads are staged under /app/uploads
-          # To manage configs outside the image, mount them and set CONFIG_WATCH=true:
-          # volumeMounts:
-          #   - { name: api-configs, mountPath: /app/api_configs, readOnly: true }
-      # volumes:
-      #   - name: api-configs
-      #     configMap: { name: sancus-api-configs }
+          # Service configs come from the sancus-api-configs ConfigMap (k8s/api_configs/*.yml).
+          # Edit a file, re-apply, and running pods reload it within about a minute.
+          volumeMounts:
+            - { name: api-configs, mountPath: /app/api_configs, readOnly: true }
+      volumes:
+        - name: api-configs
+          configMap: { name: sancus-api-configs }
