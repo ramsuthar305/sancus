@@ -8,25 +8,26 @@
 <meta property="og:title" content="Authentication · Sancus">
 <meta property="og:description" content="How Sancus verifies tokens by calling your own service, and how to plug in any verifier.">
 <meta property="og:image" content="assets/social-card.png">
-<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;28&quot; height=&quot;28&quot; viewBox=&quot;0 0 28 28&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;4&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;19.5&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;3&quot; width=&quot;22&quot; height=&quot;4&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;circle cx=&quot;14&quot; cy=&quot;17&quot; r=&quot;3.2&quot; fill=&quot;%237fe0c3&quot;/&gt;&lt;/svg&gt;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="topbar"><a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
 <div class="layout">
 <nav class="rail" id="nav" aria-label="Documentation">
-<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
-<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html" aria-current="page">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>We came last</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html" aria-current="page"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
 <div class="group">Project</div>
-<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
-<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
 </nav>
 <main>
 
-<h1>Authentication</h1>
-<p class="lede">Sancus does not check tokens itself. It calls a verifier you run and trusts the answer. This is the same contract Traefik calls ForwardAuth and APISIX calls forward-auth, so a verifier written for one of those works here.</p>
+<h1>Authentication.</h1>
+<p class="lede">Sancus does not check tokens itself. It calls a verifier you run and trusts the answer. This is the same contract Traefik calls ForwardAuth and APISIX calls forward-auth, so a verifier written for one of those works here.</p><div class="scene"><time>09:25, hour one</time><p>Asha deleted forty lines of token checking from orders. The five steps below replaced them.</p></div>
 
 <h2>The contract</h2>
 <ol class="steps">
@@ -78,7 +79,8 @@ AUTH_UPSTREAM_HEADERS=x-user-role,x-tenant</code></pre>
 </table>
 <div class="note"><p>Your services never see the token unless you list <code>authorization</code> in a route's <code>headers.add</code>. They trust the gateway's user id header, so make sure nothing but the gateway can reach them.</p></div>
 
-<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+<nav class="next" aria-label="Pages"><a href="configuration.html"><small>Previous</small><b>Service config</b></a><a class="fwd" href="rate-limiting.html"><small>Next</small><b>Rate limiting</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
 </main>
 </div>
 <script src="site.js"></script>

@@ -3,30 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How a request flows · Sancus</title>
-<meta name="description" content="What Sancus does with a request, station by station, and what each one costs.">
-<meta property="og:title" content="How a request flows · Sancus">
-<meta property="og:description" content="What Sancus does with a request, station by station, and what each one costs.">
+<title>Follow one request · Sancus</title>
+<meta name="description" content="One request through the six stations of the gateway, header by header, and what each station costs.">
+<meta property="og:title" content="Follow one request · Sancus">
+<meta property="og:description" content="One request through the six stations of the gateway, header by header, and what each station costs.">
 <meta property="og:image" content="assets/social-card.png">
-<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;28&quot; height=&quot;28&quot; viewBox=&quot;0 0 28 28&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;4&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;19.5&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;3&quot; width=&quot;22&quot; height=&quot;4&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;circle cx=&quot;14&quot; cy=&quot;17&quot; r=&quot;3.2&quot; fill=&quot;%237fe0c3&quot;/&gt;&lt;/svg&gt;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="topbar"><a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
 <div class="layout">
 <nav class="rail" id="nav" aria-label="Documentation">
-<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
-<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html" aria-current="page">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html" aria-current="page"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>We came last</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
 <div class="group">Project</div>
-<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
-<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
 </nav>
 <main>
 
-<h1>How a request flows</h1>
-<p class="lede">A request to <code>/api/&lt;service&gt;/&lt;path&gt;</code> walks six stations. Each one can end the request early. Nothing reaches your service until all of them pass.</p>
+<p class="chapter">Chapter 3</p>
+<h1>Follow one request.</h1>
+<p class="lede">A phone asks Kettle for order 881. The request carries id <code>7f3a</code>. Here is everything that happens to it between the internet and the orders service.</p>
+<figure><img data-asset src="assets/request-journey.png" alt="One small light travelling along a path through six stations toward a building" loading="lazy" onerror="this.classList.add('missing')"></figure>
 
 <div class="walk" aria-label="A request walking through the gateway">
 <svg viewBox="0 0 900 150" role="img" aria-labelledby="walk-title"><title id="walk-title">Request flow: match, policies, geo-fence and auth, rate limit, cache, proxy</title>
@@ -37,50 +40,68 @@
 <text class="sub" x="880" y="74" text-anchor="end">upstream</text>
 </svg>
 </div>
+<div class="log" role="img" aria-label="terminal output"><span class="dim">GET</span> /api/orders/v1/orders/881 HTTP/1.1
+<span class="dim">Host:</span> api.kettle.example
+<span class="dim">Authorization:</span> Bearer eyJhbGciOi…
+<span class="dim">X-Request-Id:</span> 7f3a0c2e-51d4-4b8e-9d1a-2c6f0e7b3a19
+<span class="dim">X-Forwarded-For:</span> 203.0.113.44</div>
 
-<h2>1. Match</h2>
-<p>Sancus takes the service name from the URL and finds the route in that service's file. Exact paths win over paths with parameters, whatever order you wrote them in. An unknown path gets a 404. A known path with the wrong method gets a 405 and an <code>Allow</code> header. <code>HEAD</code> works wherever <code>GET</code> does.</p>
-<p>Routes are compiled when the file loads, so matching is a loop over precompiled patterns. No I/O.</p>
+<h2>Station 1. Which door is this?</h2>
+<p>Sancus reads <code>orders</code> from the path and looks up <code>orders.yml</code>. The rest, <code>/v1/orders/881</code>, matches the route <code>/v1/orders/{int:id}</code> for GET. If the path had been <code>/v1/orders/abc</code>, the <code>int</code> type would refuse it and the phone would get <span class="status bad">404</span>. A DELETE would get <span class="status bad">405</span> with <code>Allow: GET, HEAD</code>.</p>
+<p>The routes were compiled when the file loaded. Matching is a loop over ready patterns. Nothing touches the disk.</p>
 
-<h2>2. Policies</h2>
-<p>If the service or the route lists policies, they run now. A policy is an Express middleware with a name and a schema. Sancus ships <code>ip-restriction</code>. You add your own by dropping a file in <code>policies/</code>. See <a href="policies.html">policies</a>.</p>
+<h2>Station 2. House rules</h2>
+<p>Orders has no policies. If it listed <code>ip-restriction</code> or a policy of Kettle's own, they would run here, and any of them could answer the phone and end the story. <a href="policies.html">Policies</a> shows how to write one.</p>
 
-<h2>3. Geo-fence and auth, in parallel</h2>
-<p>For anonymous cached routes, Sancus looks in the cache first and skips this station on a hit. Otherwise two checks run at the same time. The geo-fence check reads <code>X-COORDINATES</code> and rejects points inside a banned polygon. It is off until you ship polygons. The auth check sends the bearer token to your verifier, unless the route has <code>bypass: [AUTH]</code>. Valid tokens are cached in Redis for sixty seconds, so a busy user costs one verifier call a minute.</p>
+<h2>Station 3. Where are you, and who are you?</h2>
+<p>Two checks start together. The geo-fence is off at Kettle, so it passes at once. The auth check hashes the token and asks Redis if it has seen it in the last minute. It has not, so Sancus calls the verifier:</p>
+<div class="log" role="img" aria-label="terminal output"><span class="dim">POST</span> http://auth.internal:8001/v1/verify/token
+<span class="dim">X-Forwarded-Method:</span> GET
+<span class="dim">X-Forwarded-Uri:</span> /api/orders/v1/orders/881
+<span class="dim">X-Forwarded-For:</span> 203.0.113.44
+{{"token":"Bearer eyJhbGciOi…"}}
 
-<h2>4. Rate limit</h2>
-<p>The route's <code>rateLimit</code> block names a window and a key. Sancus runs one Lua script in Redis per window and gets back allowed, remaining and reset. The day window runs before the minute window, so a daily rejection does not burn a minute token. If Redis is down, the request goes through.</p>
+<span class="ok">200</span> {{"id":"u_1932","role":"customer"}}</div>
+<p>Sancus caches that answer for sixty seconds. The phone polls every ten seconds while the rider is on the way, so the verifier hears from this user once a minute instead of six times.</p>
 
-<h2>5. Cache</h2>
-<p>For cached GET routes, Sancus looks up the entry. A hit answers from Redis with <code>X-Cache-Status: HIT</code>, an <code>Age</code>, and an <code>ETag</code>. If the client sent a matching <code>If-None-Match</code>, it gets a 304 and no body. With the SWR strategy a stale entry is served at once and refreshed in the background.</p>
+<h2>Station 4. How many is too many?</h2>
+<p>This route has no <code>rateLimit</code>, so the request walks past. On <code>POST /v1/orders</code> Sancus would run one Lua script in Redis for the 30-a-minute window keyed by <code>u_1932</code>, and get back allowed, remaining and reset in one round trip.</p>
 
-<h2>6. Proxy</h2>
-<p>The request goes to an upstream node over a keep-alive connection. Sancus strips hop-by-hop headers, sets <code>Host</code> to the node, appends to <code>X-Forwarded-For</code>, and adds <code>X-Request-Id</code> plus the user id from step 3. On the way back it strips hop-by-hop headers again, streams the body, and stores it if the route is cached and the upstream did not say <code>no-store</code>.</p>
-<p>Connection errors go to the next node and are retried once for GET, HEAD and OPTIONS if the service allows it. A node that refuses connections is skipped for thirty seconds. A timeout becomes a 504. Enough failures in ten seconds open the circuit breaker, and the service gets a 503 with <code>Retry-After</code> until it recovers.</p>
+<h2>Station 5. Do we already know the answer?</h2>
+<p>No <code>cache</code> block on this route either. An order changes while it is being delivered, so Kettle does not cache it. On search, with a cache block, a repeat request would end here as <code>X-Cache-Status: HIT</code> in under three milliseconds.</p>
+
+<h2>Station 6. Through the door</h2>
+<p>Sancus picks <code>orders-b</code>, the next node in the rotation, and sends the request over a connection it already has open:</p>
+<div class="log" role="img" aria-label="terminal output"><span class="dim">GET</span> /v1/orders/881 HTTP/1.1
+<span class="dim">Host:</span> orders-b:8080
+<span class="dim">X-Request-Id:</span> 7f3a0c2e-51d4-4b8e-9d1a-2c6f0e7b3a19
+<span class="dim">X-AUTHORIZED-FOR-ID:</span> u_1932
+<span class="dim">X-Forwarded-For:</span> 203.0.113.44, 10.0.4.17
+<span class="dim">X-Forwarded-Proto:</span> https
+
+<span class="ok">200</span> {{"id":881,"status":"out_for_delivery"}}   <span class="dim">14 ms</span></div>
+<p>The response streams back to the phone with the same request id. One JSON log line records the whole trip, and every other log line about this request, in the gateway and in orders, carries <code>7f3a</code>.</p>
+
+<h2>Three other endings</h2>
+<table>
+<tr><th>If</th><th>The story ends at</th><th>The phone sees</th></tr>
+<tr><td>the token is expired</td><td>station 3</td><td>the verifier's own <span class="status bad">401</span> and body, passed through</td></tr>
+<tr><td>orders-b refuses the connection</td><td>station 6, then orders-a</td><td><span class="status ok">200</span>, one retry later; orders-b is skipped for 30 s</td></tr>
+<tr><td>both nodes take longer than 5 s</td><td>station 6</td><td><span class="status bad">504</span> after 5 s, with the request id</td></tr>
+</table>
 
 <h2>What each station costs</h2>
-<p>Measured on a laptop with one gateway process and 100 concurrent connections. The <a href="benchmarks.html">benchmark page</a> has the method and the full tables.</p>
-<table>
-<tr><th>Path</th><th>Requests per second</th></tr>
-<tr><td>Plain proxy, access log on</td><td>16,600</td></tr>
-<tr><td>Plain proxy, access log at warn</td><td>21,400</td></tr>
-<tr><td>Plus a rate limit</td><td>18,300</td></tr>
-<tr><td>Plus auth with a cached token</td><td>18,700</td></tr>
-<tr><td>Cache hit</td><td>32,400</td></tr>
-</table>
-<p>Each Redis-backed feature costs about 13 percent. A cache hit costs less than a proxied request because the upstream is out of the picture.</p>
+<p>One gateway process on a laptop, 100 connections at once. <a href="benchmarks.html">Chapter 5</a> has the method.</p>
+<div class="stat">
+<div><b>21,398</b><span>req/s, stations 1 and 6 only</span></div>
+<div><b>18,313</b><span>req/s with a rate limit</span></div>
+<div><b>18,722</b><span>req/s with a cached token check</span></div>
+<div><b>32,376</b><span>req/s answered from cache</span></div>
+</div>
+<p>Each Redis-backed station costs about 13 percent. A cache hit beats a plain proxy because the upstream drops out of the picture.</p>
 
-<h2>Words you will see</h2>
-<table>
-<tr><th>Word</th><th>Meaning</th></tr>
-<tr><td>service</td><td>one upstream and its routes; one YAML file; the first path segment after <code>/api/</code></td></tr>
-<tr><td>route</td><td>a path pattern plus methods, with optional bypass, rate limit, cache, headers and policies</td></tr>
-<tr><td>node</td><td>one address of an upstream; a service can have several</td></tr>
-<tr><td>bypass</td><td>which checks a route skips: <code>AUTH</code>, <code>GEO_FENCE</code></td></tr>
-<tr><td>policy</td><td>a named middleware you configure from YAML</td></tr>
-</table>
-
-<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+<nav class="next" aria-label="Pages"><a href="getting-started.html"><small>Previous</small><b>Hour one</b></a><a class="fwd" href="use-cases.html"><small>Next</small><b>Three teams</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
 </main>
 </div>
 <script src="site.js"></script>

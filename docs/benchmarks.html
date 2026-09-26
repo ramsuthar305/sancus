@@ -3,37 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Benchmarks · Sancus</title>
-<meta name="description" content="Measured throughput and latency for Sancus, per feature, and against Kong, APISIX, Traefik and KrakenD under the same conditions.">
-<meta property="og:title" content="Benchmarks · Sancus">
-<meta property="og:description" content="Measured throughput and latency for Sancus, per feature, and against Kong, APISIX, Traefik and KrakenD under the same conditions.">
+<title>We came last · Sancus</title>
+<meta name="description" content="Sancus measured against Kong, APISIX, Traefik and KrakenD under the same conditions, what the measurements found, and what we changed.">
+<meta property="og:title" content="We came last · Sancus">
+<meta property="og:description" content="Sancus measured against Kong, APISIX, Traefik and KrakenD under the same conditions, what the measurements found, and what we changed.">
 <meta property="og:image" content="assets/social-card.png">
-<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;28&quot; height=&quot;28&quot; viewBox=&quot;0 0 28 28&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;4&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;19.5&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;3&quot; width=&quot;22&quot; height=&quot;4&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;circle cx=&quot;14&quot; cy=&quot;17&quot; r=&quot;3.2&quot; fill=&quot;%237fe0c3&quot;/&gt;&lt;/svg&gt;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="topbar"><a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
 <div class="layout">
 <nav class="rail" id="nav" aria-label="Documentation">
-<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
-<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html" aria-current="page">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html" aria-current="page"><span class="n">5</span>We came last</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
 <div class="group">Project</div>
-<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
-<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
 </nav>
 <main>
 
-<h1>Benchmarks</h1>
-<p class="lede">Numbers you can reproduce with two scripts in the repo. The comparison table first, because that is what you came for, and Sancus is at the bottom of it.</p>
+<p class="chapter">Chapter 5</p>
+<h1>We came last.</h1>
+<p class="lede">We put Sancus next to four gateways we admire, gave them the same machine and the same upstream, and measured. Sancus finished fifth of five. The measuring also found a bug and a library that cost us 42 percent.</p>
 
-<h2>Against the others, same box, same upstream</h2>
-<p>Every gateway proxied <code>GET /echo</code> to the same nginx upstream inside one Docker network, with wrk generating load from inside the same network. Two vCPU, four gigabytes, access logs off. Median of two 15-second runs.</p>
-<div class="bars">
-<div class="bar"><span>APISIX 3.9</span><div class="track"><div class="fill" style="width:96.3%"></div></div><span class="val">86,700</span></div><div class="bar"><span>Kong 3.7</span><div class="track"><div class="fill" style="width:86.9%"></div></div><span class="val">78,200</span></div><div class="bar"><span>Traefik 3.1</span><div class="track"><div class="fill" style="width:54.3%"></div></div><span class="val">48,900</span></div><div class="bar"><span>KrakenD 2.7</span><div class="track"><div class="fill" style="width:30.8%"></div></div><span class="val">27,700</span></div><div class="bar me"><span>Sancus 2.0</span><div class="track"><div class="fill" style="width:13.3%"></div></div><span class="val">12,000</span></div>
-</div>
-<p>Requests per second. The upstream on its own did 344,000. Read the ranking, not the digits: in a two-core VM the gateway, nginx and wrk share the same cores, and the same Kong setup measured 58k in one session and 78k in the next. The ranking never changed.</p>
+<h2>The race</h2>
+<p>Each gateway forwarded <code>GET /echo</code> to the same nginx upstream in one Docker network. wrk sent the load from inside that network. Two CPUs, 4 GB, access logs off, median of two 15-second runs. On its own, the upstream answered 344,000 requests a second.</p>
+<div class="bars"><div class="bar"><span>APISIX 3.9</span><div class="track"><div class="fill" style="width:96.3%"></div></div><span class="val">86,700</span></div><div class="bar"><span>Kong 3.7</span><div class="track"><div class="fill" style="width:86.9%"></div></div><span class="val">78,200</span></div><div class="bar"><span>Traefik 3.1</span><div class="track"><div class="fill" style="width:54.3%"></div></div><span class="val">48,900</span></div><div class="bar"><span>KrakenD 2.7</span><div class="track"><div class="fill" style="width:30.8%"></div></div><span class="val">27,700</span></div><div class="bar me"><span>Sancus 2.0</span><div class="track"><div class="fill" style="width:13.3%"></div></div><span class="val">12,000</span></div></div>
 <table>
 <tr><th>Gateway</th><th>Runs on</th><th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>RSS MB</th></tr>
 <tr><td>APISIX 3.9</td><td>nginx, LuaJIT</td><td>86,700</td><td>1.1</td><td>2.4</td><td>78</td></tr>
@@ -42,49 +41,52 @@
 <tr><td>KrakenD 2.7</td><td>Go</td><td>27,700</td><td>3.4</td><td>10.5</td><td>37</td></tr>
 <tr><td>Sancus 2.0</td><td>Node 22, 2 workers</td><td>12,000</td><td>7.1</td><td>22.4</td><td>179</td></tr>
 </table>
+<p>Trust the order more than the digits. In a two-CPU VM the gateway, nginx and wrk fight for the same cores, and Kong scored 58k in one session and 78k in the next. The order held across four sessions.</p>
 
-<h2>What that means</h2>
-<p>Per core, Sancus does about a seventh of APISIX and half of KrakenD. That is the cost of running on a JavaScript HTTP stack. Per request Sancus spends about 47 microseconds of CPU. APISIX spends about 12.</p>
-<p>One Sancus process handles about 21,000 requests a second on a laptop. A pod with four workers handles 30,000 to 37,000. Most products peak well below 5,000, where one or two small pods cover it and the gateway is nowhere near the bottleneck. At that load the extra latency is about 0.3 milliseconds at the median.</p>
-<p>If your edge does 50,000 requests a second per node, pick APISIX or Kong. If your team's time is the scarce thing, the per-feature table below is what you pay for each convenience.</p>
+<h2>The first run went badly</h2>
+<div class="scene"><time>Run 1</time><p>Sancus managed 11,000 requests a second and returned 502 to one request in five. The logs said <code>EADDRNOTAVAIL</code>: the laptop had run out of ports.</p><p>The connection pool to the upstream kept 32 idle connections and threw away the rest. At 100 connections of load, Sancus opened and closed sockets as fast as it could. In eight seconds it left 16,000 of them in TIME_WAIT.</p></div>
+<p>One setting fixed it: keep as many idle connections as busy ones. The 502s stopped. This bug also sat in the production code this project grew out of, where it showed up as the odd unexplained 502 at peak.</p>
 
-<h2>Sancus per feature</h2>
-<p>One gateway process on an Apple M4 laptop, Node 24, local Redis, a four-process Node upstream that does 220,000 on its own. <code>wrk -t4 -c100 -d15s</code>, median of two runs, zero non-2xx responses. "As shipped" means the default config with the access log on and the IP limiter on. "Tuned" means <code>LOG_LEVEL=warn</code> and the IP limiter off, the usual setting behind a load balancer.</p>
-<table>
-<tr><th>Scenario</th><th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>CPU %</th><th>RSS MB</th></tr>
-<tr><td>direct upstream (baseline)</td><td>219,058</td><td>0.394</td><td>1.29</td><td>–</td><td>–</td></tr><tr><td>proxy, as shipped (info log + IP limiter)</td><td>16,574</td><td>5.66</td><td>8.81</td><td>121</td><td>283</td></tr><tr><td>proxy, tuned</td><td>21,398</td><td>4.45</td><td>7.98</td><td>125</td><td>269</td></tr><tr><td>proxy + route rate limit</td><td>18,313</td><td>5.13</td><td>8.7</td><td>125</td><td>278</td></tr><tr><td>proxy + auth (cached token)</td><td>18,722</td><td>5</td><td>8.68</td><td>126</td><td>266</td></tr><tr><td>cache HIT</td><td>32,376</td><td>2.89</td><td>7.38</td><td>133</td><td>274</td></tr><tr><td>auth + rate limit + cache HIT</td><td>21,494</td><td>4.36</td><td>8.18</td><td>131</td><td>268</td></tr><tr><td>proxy, tuned, 4 workers</td><td>30,814</td><td>2.9</td><td>9.56</td><td>439</td><td>996</td></tr><tr><td>auth + rate limit + cache HIT, 4 workers</td><td>37,130</td><td>2.44</td><td>7.56</td><td>441</td><td>1009</td></tr>
-</table>
-<p>The access log costs about 20 percent. Each Redis-backed feature costs about 13 percent. A cache hit never reaches the upstream, which is why it wins. The four-worker rows scale less than four times because the load generator shares the laptop and four of its ten cores are efficiency cores.</p>
-
-<h2>Latency at a steady 2,000 requests a second</h2>
-<p>The table above pushes the gateway to saturation, so its latency is queueing. This one holds a fixed 2,000 requests a second with oha, which is how a real service sees it.</p>
-<table>
-<tr><th>Scenario</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>p99.9 ms</th></tr>
-<tr><td>direct upstream (baseline)</td><td>0.128</td><td>0.208</td><td>0.411</td><td>3.094</td></tr><tr><td>proxy, tuned</td><td>0.411</td><td>0.816</td><td>6.621</td><td>24.307</td></tr><tr><td>auth + rate limit + cache HIT</td><td>0.5</td><td>0.759</td><td>7.441</td><td>106.675</td></tr><tr><td>proxy, tuned, 4 workers</td><td>0.4</td><td>0.783</td><td>3.035</td><td>16.275</td></tr>
-</table>
-<p>The upstream alone answers in 0.13 ms. Through one Sancus process it is 0.41 ms. The p99.9 spikes are V8 garbage collection pauses. Four workers spread them out.</p>
-
-<h2>Where the time goes</h2>
-<p>To find out what to fix, four proxies were measured against the same upstream. All of Sancus's own logic, meaning matching, auth, limits, cache, policies and metrics, cost six percent. The <code>http-proxy</code> library cost 42 percent. Express cost 35 percent.</p>
+<h2>Where the time went</h2>
+<p>With the errors gone, Sancus still did 14,900 requests a second where a bare Node proxy does 42,000. We built four proxies of increasing weight and measured each against the same upstream:</p>
 <table>
 <tr><th>Stack</th><th>req/s</th><th>CPU per request</th></tr>
-<tr><td>Raw Node request pipe, no framework</td><td>42,100</td><td>24 µs</td></tr>
-<tr><td>http-proxy library alone</td><td>24,200</td><td>41 µs</td></tr>
-<tr><td>Express plus http-proxy, no gateway logic</td><td>15,800</td><td>63 µs</td></tr>
-<tr><td>Sancus before the change</td><td>14,900</td><td>67 µs</td></tr>
+<tr><td>Bare Node request pipe</td><td>42,100</td><td>24 µs</td></tr>
+<tr><td>The http-proxy library</td><td>24,200</td><td>41 µs</td></tr>
+<tr><td>Express plus http-proxy</td><td>15,800</td><td>63 µs</td></tr>
+<tr><td>Sancus, every feature</td><td>14,900</td><td>67 µs</td></tr>
 </table>
-<p>So the library went. Sancus now pipes with <code>http.request</code> and keeps Express. Plain proxy went from 14,900 to 21,400 requests a second and p99 from 10.9 to 8.0 ms. The same run caught a bug: the upstream pool capped free sockets at 32, churned connections under load, and ran out of ports. That is fixed and every table above has zero errors.</p>
-<p>Dropping Express would reach roughly 35,000 per process. Four workers already pass that, so it stays on the list.</p>
+<p>The gateway logic, all of it, cost 4 µs. The proxy library cost 17. We replaced it with a direct <code>http.request</code> pipe and kept Express.</p>
+<div class="stat">
+<div><b>14.9k → 21.4k</b><span>requests a second, one process</span></div>
+<div><b>10.9 → 8.0 ms</b><span>p99 latency at saturation</span></div>
+<div><b>0.3 ms</b><span>added at the median, at a steady 2,000 req/s</span></div>
+</div>
+<p>Dropping Express would reach about 35,000 per process. Four workers already pass that, so it waits.</p>
 
-<h2>Reproduce it</h2>
-<pre><code class="language-bash">brew install wrk oha           # or apt / your package manager
+<h2>What last place means for you</h2>
+<p>Per core, Sancus does a seventh of APISIX and half of KrakenD. That is the price of a JavaScript HTTP stack. One process handles about 21,000 requests a second; a four-worker pod handles 30,000 to 37,000. Kettle peaks at 1,800. At that load the gateway adds 0.3 ms at the median and the team's time goes to the product.</p>
+<p>If one node of yours has to carry 50,000 a second, the right door is APISIX or Kong.</p>
+
+<h2>Every feature, measured</h2>
+<p>One process on an Apple M4 laptop, Node 24, local Redis, a 4-process Node upstream that does 220,000 on its own. <code>wrk -t4 -c100 -d15s</code>, median of two runs, zero errors. "As shipped" has the access log and the IP limiter on. "Tuned" runs <code>LOG_LEVEL=warn</code> with the IP limiter off.</p>
+<table><tr><th>Scenario</th><th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>CPU %</th><th>RSS MB</th></tr><tr><td>direct upstream (baseline)</td><td>219,058</td><td>0.394</td><td>1.29</td><td>–</td><td>–</td></tr><tr><td>proxy, as shipped (info log + IP limiter)</td><td>16,574</td><td>5.66</td><td>8.81</td><td>121</td><td>283</td></tr><tr><td>proxy, tuned</td><td>21,398</td><td>4.45</td><td>7.98</td><td>125</td><td>269</td></tr><tr><td>proxy + route rate limit</td><td>18,313</td><td>5.13</td><td>8.7</td><td>125</td><td>278</td></tr><tr><td>proxy + auth (cached token)</td><td>18,722</td><td>5</td><td>8.68</td><td>126</td><td>266</td></tr><tr><td>cache HIT</td><td>32,376</td><td>2.89</td><td>7.38</td><td>133</td><td>274</td></tr><tr><td>auth + rate limit + cache HIT</td><td>21,494</td><td>4.36</td><td>8.18</td><td>131</td><td>268</td></tr><tr><td>proxy, tuned, 4 workers</td><td>30,814</td><td>2.9</td><td>9.56</td><td>439</td><td>996</td></tr><tr><td>auth + rate limit + cache HIT, 4 workers</td><td>37,130</td><td>2.44</td><td>7.56</td><td>441</td><td>1009</td></tr></table>
+
+<h2>At a steady 2,000 a second</h2>
+<p>The table above pushes to saturation, so its latency is mostly queueing. Here oha holds the rate steady, closer to what a real service sees.</p>
+<table><tr><th>Scenario</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>p99.9 ms</th></tr><tr><td>direct upstream (baseline)</td><td>0.128</td><td>0.208</td><td>0.411</td><td>3.094</td></tr><tr><td>proxy, tuned</td><td>0.411</td><td>0.816</td><td>6.621</td><td>24.307</td></tr><tr><td>auth + rate limit + cache HIT</td><td>0.5</td><td>0.759</td><td>7.441</td><td>106.675</td></tr><tr><td>proxy, tuned, 4 workers</td><td>0.4</td><td>0.783</td><td>3.035</td><td>16.275</td></tr></table>
+<p>The p99.9 spikes are garbage collection pauses in V8. More workers spread them out.</p>
+
+<h2>Run it yourself</h2>
+<pre><code class="language-bash">brew install wrk oha
 npm ci &amp;&amp; npm run build
-npm run bench                  # per-feature, results in tests/bench/results/
+npm run bench                     # every feature; results in tests/bench/results/
 docker build -t sancus:slim .
-tests/bench/compare/compare.sh # Sancus vs Traefik, Kong, APISIX, KrakenD</code></pre>
-<p>Run it on a Linux box with dedicated cores and send a pull request with the numbers. The scripts print the exact commands and fail on any non-2xx response.</p>
+tests/bench/compare/compare.sh    # Sancus against Traefik, Kong, APISIX, KrakenD</code></pre>
+<p>Run it on a Linux machine with dedicated cores and send a pull request with your numbers. Both scripts print the exact commands and stop on any non-2xx response.</p>
 
-<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+<nav class="next" aria-label="Pages"><a href="use-cases.html"><small>Previous</small><b>Three teams</b></a><a class="fwd" href="demo.html"><small>Next</small><b>The practice run</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
 </main>
 </div>
 <script src="site.js"></script>

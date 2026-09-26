@@ -3,43 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>What is Sancus · Sancus</title>
-<meta name="description" content="Sancus is a small API gateway you configure with one YAML file per service. Auth, rate limits, caching, retries and metrics at the edge of your system.">
-<meta property="og:title" content="What is Sancus · Sancus">
-<meta property="og:description" content="Sancus is a small API gateway you configure with one YAML file per service. Auth, rate limits, caching, retries and metrics at the edge of your system.">
+<title>Why one door · Sancus</title>
+<meta name="description" content="Sancus is a small API gateway. One YAML file per service. It checks tokens, applies rate limits, answers from cache and forwards the rest.">
+<meta property="og:title" content="Why one door · Sancus">
+<meta property="og:description" content="Sancus is a small API gateway. One YAML file per service. It checks tokens, applies rate limits, answers from cache and forwards the rest.">
 <meta property="og:image" content="assets/social-card.png">
-<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;28&quot; height=&quot;28&quot; viewBox=&quot;0 0 28 28&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;4&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;19.5&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;3&quot; width=&quot;22&quot; height=&quot;4&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;circle cx=&quot;14&quot; cy=&quot;17&quot; r=&quot;3.2&quot; fill=&quot;%237fe0c3&quot;/&gt;&lt;/svg&gt;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="topbar"><a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
 <div class="layout">
 <nav class="rail" id="nav" aria-label="Documentation">
-<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
-<div class="group">Start</div><a class="item" href="index.html" aria-current="page">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">The story</div><a class="item" href="index.html" aria-current="page"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>We came last</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
 <div class="group">Project</div>
-<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
-<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
 </nav>
 <main>
 
 <div class="hero">
 <div>
-<h1>One door in front of all your services.</h1>
-<p class="lede">Sancus is an API gateway written in Node. You describe each service in one YAML file. Sancus checks the token, applies the rate limit, answers from cache when it can, and forwards the rest.</p>
-<a class="cta" href="getting-started.html">Run it in five minutes</a>
-<a class="cta quiet" href="how-it-works.html">See how a request flows</a>
+<p class="chapter">Chapter 1</p>
+<h1>The door your services share.</h1>
+<p class="lede">Sancus is an API gateway you set up in an afternoon. You describe each service in one YAML file. Sancus checks the token, counts the request against a limit, answers from cache when it can, and forwards the rest.</p>
+<div class="actions"><a class="cta" href="getting-started.html">Start the story</a><a class="cta quiet" href="demo.html">Skip to the demo</a></div>
 </div>
-<img data-asset src="assets/hero-gate.png" alt="A stone gateway with requests passing through it into a city of services" onerror="this.classList.add('missing')">
+<img data-asset src="assets/hero-gate.png" alt="A lit gateway at night with a line of small green lights passing through it toward a row of buildings" onerror="this.classList.add('missing')">
 </div>
 
-<h2>The problem it solves</h2>
-<p>You have three services. Each one checks tokens its own way. Two of them have a rate limiter, one does not. Nobody remembers which one caches. A new service joins and copies whichever pattern its author found first.</p>
-<p>Put Sancus in front, and those jobs happen in one place. Your services receive a request that already has a verified user id on it, a request id for the logs, and a guarantee that the caller is inside their quota. The service code gets smaller.</p>
+<h2>A night at Kettle</h2>
+<p>Kettle is a made-up food delivery startup. You will follow its team through these pages. It runs three services: menu, orders and search. Asha is on call.</p>
+<div class="scene"><time>02:14</time><p>Asha's phone goes off. Checkout is failing. A partner's sync script has a bug and is calling the API in a loop, 900 requests a second.</p><p>The menu service shrugs it off. Someone gave menu a rate limiter last spring. Orders has none; the ticket to add one has been open since March. The script hits orders too, and orders runs out of database connections. Checkout goes down with it.</p></div>
+<div class="scene"><time>03:05</time><p>Asha blocks the partner's key by hand and checkout recovers. Then Asha opens the three codebases side by side.</p><p>Menu checks tokens with a library. Orders checks them with a copy of that library from two versions ago. Search caches in memory, so each pod has its own cache. Three services, three front doors, three sets of locks, and nobody holds the list.</p></div>
+<figure><img data-asset src="assets/night-oncall.png" alt="A person at a kitchen table at night, lit by a laptop, with three small glowing doors on the screen" loading="lazy" onerror="this.classList.add('missing')"></figure>
+<p>The fix the team settled on the next morning was one door in front of all three. That door is Sancus.</p>
 
-<h2>What a request goes through</h2>
+<h2>What the door does</h2>
 
 <div class="walk" aria-label="A request walking through the gateway">
 <svg viewBox="0 0 900 150" role="img" aria-labelledby="walk-title"><title id="walk-title">Request flow: match, policies, geo-fence and auth, rate limit, cache, proxy</title>
@@ -50,39 +54,39 @@
 <text class="sub" x="880" y="74" text-anchor="end">upstream</text>
 </svg>
 </div>
-<p>Every request walks these stations in order. A cache hit stops at station five and never touches your service. Read the <a href="how-it-works.html">full walk</a> for what each station does and what it costs.</p>
+<p>Each request walks six stations. Any station can stop it. A cache hit stops at station five and never reaches your service. <a href="how-it-works.html">Chapter 3</a> follows one request through all six, header by header.</p>
 
-<h2>What you get</h2>
-<div class="grid">
-<div class="tile"><h3>One file per service</h3><p>Routes, methods, auth, limits and cache in one YAML file. Sancus checks it against a schema and reloads it when you save.</p></div>
-<div class="tile"><h3>Your own auth</h3><p>Sancus calls the token verifier you already have. A 2xx with a user id means valid. Anything else goes back to the client as is.</p></div>
-<div class="tile"><h3>Two rate limiters</h3><p>A per-IP bucket for everyone, and per-route windows keyed by user, IP or API key. Both in Redis, so every pod sees the same counts.</p></div>
-<div class="tile"><h3>A real cache</h3><p>LRU, LFU or stale-while-revalidate per route. Standard headers, 304 answers, and it respects what your service says in Cache-Control.</p></div>
-<div class="tile"><h3>Failure handled at the edge</h3><p>Several upstream nodes, retries, a circuit breaker and timeouts. A slow service gets a 504, not a hung client.</p></div>
-<div class="tile"><h3>Runs like a grown-up</h3><p>Readiness that means it, Prometheus metrics, JSON logs with request ids, graceful shutdown, an 80 MB image.</p></div>
-</div>
-
-<h2>A service in twelve lines</h2>
+<h2>The file that would have saved the night</h2>
 <pre><code class="language-yaml">service:
-  name: users
-  nodes: [http://users-a:8080, http://users-b:8080]
+  name: orders
+  nodes: [http://orders-a:8080, http://orders-b:8080]
   timeout: 5000
 apis:
-  - name: Users
+  - name: Orders
     routes:
-      - path: /v1/users/{int:id}
-        methods: [GET, PATCH]
-      - path: /v1/public/search
+      - path: /v1/orders/{int:id}
         methods: [GET]
-        bypass: [AUTH]
-        rateLimit: { perMinute: 120, key: IP }
-        cache: { strategy: SWR, ttl: 300, key: PATH_QUERY }</code></pre>
-<p>Drop that in <code>api_configs/users.yml</code>. Requests to <code>/api/users/v1/users/42</code> now need a valid token, and <code>/api/users/v1/public/search</code> is public, limited to 120 a minute per IP, and cached for five minutes.</p>
+      - path: /v1/orders
+        methods: [POST]
+        rateLimit: { perMinute: 30, key: USER }</code></pre>
+<p>That is <code>api_configs/orders.yml</code>. Every route needs a valid token because none of them say <code>bypass: [AUTH]</code>. Creating an order is capped at 30 a minute per user. The partner's loop gets <span class="status warn">429</span> at the door, and the orders database never hears about it.</p>
 
-<h2>Who should not use it</h2>
-<p>If your gateway has to do more than 50,000 requests a second on one machine, use APISIX or Kong. They run on nginx and they are faster per core. The <a href="benchmarks.html">benchmark page</a> shows the numbers side by side, with Sancus in last place on raw throughput. Sancus is for teams that want the setup to take an afternoon and the config to fit in their head.</p>
+<h2>What else is behind the door</h2>
+<div class="bento">
+<div class="w3"><h3>Your auth, not ours</h3><p>Sancus sends the token to the verifier you already run. A 2xx with a user id means valid. The id reaches your service as a header, and your service stops parsing tokens.</p></div>
+<div class="w3"><h3>Limits every pod agrees on</h3><p>Counts live in Redis. Add a second gateway pod and nobody gets double the quota. Clients get <code>X-RateLimit-*</code> and <code>Retry-After</code>.</p></div>
+<div class="w2"><h3>A shared cache</h3><p>LRU, LFU or stale-while-revalidate per route, with ETags and 304s.</p></div>
+<div class="w2"><h3>Failure at the edge</h3><p>Several nodes, retries, timeouts and a circuit breaker.</p></div>
+<div class="w2"><h3>Your own rules</h3><p>A policy is a small JavaScript file you name in YAML.</p></div>
+<div class="w4"><h3>Built to run</h3><p>Readiness that checks config and Redis, Prometheus metrics, JSON logs with a request id on every line, a clean drain on SIGTERM, an 80 MB image.</p></div>
+<div class="w2"><h3>Reloads on save</h3><p>Edit a YAML file and the next request uses it. A broken file is refused.</p></div>
+</div>
 
-<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+<h2>When to pick another door</h2>
+<p>Sancus runs on Node. APISIX and Kong run on nginx and push four to seven times more requests per core. If one gateway node has to carry 50,000 requests a second, use them. <a href="benchmarks.html">Chapter 5</a> shows the numbers with Sancus in last place. Pick Sancus when one person should be able to read the whole config, and the whole gateway, in an afternoon.</p>
+
+<nav class="next" aria-label="Pages"><a class="fwd" href="getting-started.html"><small>Next</small><b>Hour one</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
 </main>
 </div>
 <script src="site.js"></script>

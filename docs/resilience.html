@@ -8,25 +8,37 @@
 <meta property="og:title" content="Upstreams and failure · Sancus">
 <meta property="og:description" content="Several nodes per service, retries, timeouts, a circuit breaker and what the client sees when things break.">
 <meta property="og:image" content="assets/social-card.png">
-<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;26&quot; height=&quot;26&quot; viewBox=&quot;0 0 26 26&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;3&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;19&quot; y=&quot;4&quot; width=&quot;4&quot; height=&quot;19&quot; rx=&quot;1&quot; fill=&quot;%23b8742a&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;2&quot; width=&quot;20&quot; height=&quot;3.5&quot; rx=&quot;1&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;circle cx=&quot;13&quot; cy=&quot;15&quot; r=&quot;3&quot; fill=&quot;%231f6f5c&quot;/&gt;&lt;/svg&gt;">
+<meta name="theme-color" content="#0c1b20">
+<link rel="icon" href="data:image/svg+xml,&lt;svg width=&quot;28&quot; height=&quot;28&quot; viewBox=&quot;0 0 28 28&quot; aria-hidden=&quot;true&quot;&gt;&lt;rect x=&quot;4&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;19.5&quot; y=&quot;6&quot; width=&quot;4.5&quot; height=&quot;19&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;rect x=&quot;3&quot; y=&quot;3&quot; width=&quot;22&quot; height=&quot;4&quot; rx=&quot;1.5&quot; fill=&quot;%23f2a93b&quot;/&gt;&lt;circle cx=&quot;14&quot; cy=&quot;17&quot; r=&quot;3.2&quot; fill=&quot;%237fe0c3&quot;/&gt;&lt;/svg&gt;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="topbar"><a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
+<div class="topbar"><a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a><button type="button" aria-expanded="false" aria-controls="nav">Menu</button></div>
 <div class="layout">
 <nav class="rail" id="nav" aria-label="Documentation">
-<a class="brand" href="index.html"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="19" y="4" width="4" height="19" rx="1" fill="#b8742a"/><rect x="3" y="2" width="20" height="3.5" rx="1" fill="#1f6f5c"/><circle cx="13" cy="15" r="3" fill="#1f6f5c"/></svg> Sancus</a>
-<div class="group">Start</div><a class="item" href="index.html">What is Sancus</a><a class="item" href="getting-started.html">Get it running</a><a class="item" href="demo.html">The demo</a><div class="group">Learn</div><a class="item" href="how-it-works.html">How a request flows</a><a class="item" href="use-cases.html">Where it fits</a><a class="item" href="benchmarks.html">Benchmarks</a><div class="group">Reference</div><a class="item" href="configuration.html">Service config</a><a class="item" href="auth.html">Authentication</a><a class="item" href="rate-limiting.html">Rate limiting</a><a class="item" href="caching.html">Caching</a><a class="item" href="resilience.html" aria-current="page">Upstreams and failure</a><a class="item" href="policies.html">Policies</a><a class="item" href="operations.html">Running in production</a>
+<a class="brand" href="index.html"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="4" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="19.5" y="6" width="4.5" height="19" rx="1.5" fill="#f2a93b"/><rect x="3" y="3" width="22" height="4" rx="1.5" fill="#f2a93b"/><circle cx="14" cy="17" r="3.2" fill="#7fe0c3"/></svg> Sancus</a>
+<div class="group">The story</div><a class="item" href="index.html"><span class="n">1</span>Why one door</a><a class="item" href="getting-started.html"><span class="n">2</span>Hour one</a><a class="item" href="how-it-works.html"><span class="n">3</span>Follow one request</a><a class="item" href="use-cases.html"><span class="n">4</span>Three teams</a><a class="item" href="benchmarks.html"><span class="n">5</span>We came last</a><div class="group">Try it</div><a class="item" href="demo.html"><span class="n"></span>The practice run</a><div class="group">Reference</div><a class="item" href="configuration.html"><span class="n"></span>Service config</a><a class="item" href="auth.html"><span class="n"></span>Authentication</a><a class="item" href="rate-limiting.html"><span class="n"></span>Rate limiting</a><a class="item" href="caching.html"><span class="n"></span>Caching</a><a class="item" href="resilience.html" aria-current="page"><span class="n"></span>Upstreams and failure</a><a class="item" href="policies.html"><span class="n"></span>Policies</a><a class="item" href="operations.html"><span class="n"></span>Running in production</a>
 <div class="group">Project</div>
-<a class="item" href="https://github.com/ramsuthar305/sancus">GitHub</a>
-<a class="item" href="https://github.com/ramsuthar305/sancus/blob/main/CHANGELOG.md">Releases</a>
+<a class="item" href="https://github.com/ramsuthar305/sancus"><span class="n"></span>GitHub</a>
 </nav>
 <main>
 
-<h1>Upstreams and failure</h1>
-<p class="lede">A service can have several nodes. Sancus spreads requests across them, steps around the ones that fail, gives up on the slow ones, and stops calling a service that keeps failing.</p>
+<h1>Upstreams and failure.</h1>
+<p class="lede">A service can have several nodes. Sancus spreads requests across them, steps around the ones that fail, gives up on the slow ones, and stops calling a service that keeps failing.</p><div class="scene"><time>A Tuesday in month two</time><p>One of the two menu nodes lost its disk at 14:02. Clients noticed nothing. Sancus got a refused connection, sent the request to the other node, and left the broken one alone for thirty seconds at a time until someone replaced it at 14:40.</p></div><div class="pair"><div><div class="tag before">Before, in the menu client</div><pre><code class="language-javascript">async function getMenu(id, tries = 2) {
+  for (const host of shuffle(MENU_HOSTS)) {
+    try { return await fetch(host + &#x27;/menu/&#x27; + id,
+      { signal: AbortSignal.timeout(5000) }); }
+    catch (e) { if (--tries === 0) throw e; }
+  }
+}</code></pre></div><div><div class="tag after">After, in menu.yml</div><pre><code class="language-yaml">service:
+  name: menu
+  nodes: [http://menu-a:8080, http://menu-b:8080]
+  retries: 1
+  timeout: 5000
+  circuitBreaker: { volumeThreshold: 10, errorThresholdPercentage: 50 }</code></pre></div></div>
 
 <h2>Nodes</h2>
 <pre><code class="language-yaml">service:
@@ -63,7 +75,8 @@
 <h2>Hot reload</h2>
 <p>Save a file in <code>api_configs/</code> and Sancus validates it and swaps the routing table in place. A file that fails validation is logged, counted in <code>sancus_config_reloads_total{status="error"}</code>, and ignored. The previous config keeps serving.</p>
 
-<footer>Sancus is MIT licensed. Docs built by hand, no framework. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit this page</a>.</footer>
+<nav class="next" aria-label="Pages"><a href="caching.html"><small>Previous</small><b>Caching</b></a><a class="fwd" href="policies.html"><small>Next</small><b>Policies</b></a></nav>
+<footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>
 </main>
 </div>
 <script src="site.js"></script>
