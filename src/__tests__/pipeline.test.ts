@@ -107,13 +107,13 @@ jest.mock('../utils/discordAlerts', () => {
   }));
 });
 
-// Mock Veritas client
-const mockCallVeritas = jest.fn();
-jest.mock('../clients/veritasClients', () => ({
+// Mock auth client
+const mockVerifyToken = jest.fn();
+jest.mock('../clients/authClient', () => ({
   __esModule: true,
   default: {
     getInstance: () => ({
-      callVeritasService: mockCallVeritas,
+      verifyToken: mockVerifyToken,
     }),
   },
 }));
@@ -312,7 +312,7 @@ describe('CommonRequestController.pipeline()', () => {
       expires_at: 2,
       token_type: 'access',
     };
-    mockCallVeritas.mockResolvedValue(tokenDetails);
+    mockVerifyToken.mockResolvedValue(tokenDetails);
     mockReq = buildReq({
       originalUrl: '/api/example/curation/v1/home-feed/',
       url: '/api/example/curation/v1/home-feed/',

@@ -76,7 +76,12 @@ Requests to `/api/<service name>/<path>` are validated against the config and pr
 | Variable | Required | Description |
 |---|---|---|
 | `<SERVICE>_HOST` (per config) | yes | Upstream base URL for each service, e.g. `YOUR_SERVICE_HOST=http://my-service` |
-| `VERITAS_URL` | yes | Auth service base URL. Tokens are POSTed to `/v1/verify/token` |
+| `AUTH_URL` | yes | Base URL of your token-verification service |
+| `AUTH_VERIFY_PATH` / `AUTH_VERIFY_METHOD` | no | Endpoint appended to `AUTH_URL` (default `/v1/verify/token`, `POST`) |
+| `AUTH_TOKEN_IN` / `AUTH_TOKEN_FIELD` | no | Send the token in the JSON `body` (default, field `token`) or as a `header` (default `authorization`) |
+| `AUTH_USER_ID_FIELD` | no | Dot-path in the auth response that identifies the user (default `id`), e.g. `user.uuid` |
+| `AUTH_FORWARD_HEADER` | no | Header carrying that id to upstreams (default `X-AUTHORIZED-FOR-ID`) |
+| `AUTH_TIMEOUT_MS` | no | Auth call timeout (default `5000`) |
 | `REDIS_URL` | no | Defaults to `redis://127.0.0.1:6379`. Used for token cache, per-route rate limits, and response cache. Gateway fails open if Redis is down |
 | `ALLOWED_ORIGINS` | no | Comma-separated CORS origins. Wrap in slashes for a regex: `/\.example\.com$/`. Defaults to `http://localhost:5173` |
 | `IP_RATE_LIMIT_CAPACITY` | no | Global per-IP burst tokens (default `200`) |
@@ -98,7 +103,7 @@ npm install
 
 cat > .env <<'ENV'
 YOUR_SERVICE_HOST=http://localhost:8000
-VERITAS_URL=http://localhost:8001
+AUTH_URL=http://localhost:8001
 REDIS_URL=redis://localhost:6379
 ALLOWED_ORIGINS=http://localhost:5173
 ENV
@@ -113,7 +118,17 @@ The gateway listens on port `3000`.
 
 ## 🔐 Authentication
 
-`src/clients/veritasClients.ts` calls `POST ${VERITAS_URL}/v1/verify/token` with `{ token }` and expects a JSON body with at least an `id` field. The resolved id is forwarded upstream as `X-AUTHORIZED-FOR-ID`. Adapt the client to your own auth service if its contract differs.
+Sancus does not implement auth itself. For every route without `AUTH` in `bypass`, it takes the incoming `Authorization` header value and calls your verification service as configured by the `AUTH_*` variables. A `2xx` response containing `AUTH_USER_ID_FIELD` means the token is valid; `401` means invalid. Results are cached in Redis for 60s. The resolved id is forwarded upstream as `AUTH_FORWARD_HEADER` and used for `USER`-keyed rate limits and caches.
+
+Example for a service that expects `GET /me` with a bearer header and returns `{ "user": { "uuid": "..." } }`:
+
+```
+AUTH_URL=https://auth.internal
+AUTH_VERIFY_PATH=/me
+AUTH_VERIFY_METHOD=GET
+AUTH_TOKEN_IN=header
+AUTH_USER_ID_FIELD=user.uuid
+```
 
 ---
 

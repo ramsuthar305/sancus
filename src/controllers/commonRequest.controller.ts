@@ -3,12 +3,12 @@ import httpProxy from 'http-proxy';
 import http from 'http';
 import https from 'https';
 import { v4 as uuidv4 } from 'uuid';
-import VeritasServiceClient from '../clients/veritasClients';
+import AuthServiceClient from '../clients/authClient';
 import getLogger from '../configs/logger';
 import { CacheConfig, HttpMethod } from '../types/api';
 import ClientResponseStatus from '../types/requestStatus';
 import ResponseEnum from '../types/responseEnums';
-import { VeritasResponse } from '../types/veritas';
+import { AuthResponse } from '../types/auth';
 import RouteRegistry from '../services/routeRegistry';
 import SancusResponse from '../utils/responseUtil';
 import UrlUtils from '../utils/urlUtils';
@@ -53,6 +53,8 @@ const httpsAgent = new https.Agent({
 // Redis-backed token verification cache (TTL 60s, shared across all pods)
 const TOKEN_CACHE_TTL = 60; // seconds
 const TOKEN_CACHE_PREFIX = 'sancus:token:';
+// Header carrying the resolved user id to upstream services
+const AUTH_FORWARD_HEADER = process.env.AUTH_FORWARD_HEADER || 'X-AUTHORIZED-FOR-ID';
 
 function fastHash(str: string): string {
   let h = 5381;
@@ -62,7 +64,7 @@ function fastHash(str: string): string {
   return (h >>> 0).toString(36);
 }
 
-async function getCachedToken(token: string): Promise<VeritasResponse | null> {
+async function getCachedToken(token: string): Promise<AuthResponse | null> {
   const redis = RedisService.getInstance().getClient();
   if (!redis) return null;
   try {
@@ -74,7 +76,7 @@ async function getCachedToken(token: string): Promise<VeritasResponse | null> {
   }
 }
 
-async function setCachedToken(token: string, data: VeritasResponse): Promise<void> {
+async function setCachedToken(token: string, data: AuthResponse): Promise<void> {
   const redis = RedisService.getInstance().getClient();
   if (!redis) return;
   try {
@@ -104,7 +106,7 @@ function shouldAlert(key: string): boolean {
 
 interface SancusProxyContext {
   correlationalId: string;
-  tokenDetails?: VeritasResponse;
+  tokenDetails?: AuthResponse;
   uploadedFiles?: any[];
   shouldCacheResponse: boolean;
   cacheKey?: string;
@@ -124,7 +126,7 @@ proxy.on('proxyReq', (proxyReq, req, res) => {
 
   proxyReq.setHeader('Correlation-ID', ctx.correlationalId);
   if (ctx.tokenDetails) {
-    proxyReq.setHeader('X-AUTHORIZED-FOR-ID', ctx.tokenDetails.id);
+    proxyReq.setHeader(AUTH_FORWARD_HEADER, String(ctx.tokenDetails.id));
   }
 
   // Handle multipart/form-data requests with files
@@ -278,7 +280,7 @@ proxy.on('error', (err, req, res) => {
 
 class CommonRequestController {
   constructor() {
-    this.isVeritasResponse = this.isVeritasResponse.bind(this);
+    this.isAuthResponse = this.isAuthResponse.bind(this);
     this.validateToken = this.validateToken.bind(this);
     this.pipeline = this.pipeline.bind(this);
     this.validateGeofence = this.validateGeofence.bind(this);
@@ -292,31 +294,23 @@ class CommonRequestController {
     return hostUrl;
   }
 
-  private isVeritasResponse(
-    response: VeritasResponse | ClientResponseStatus
-  ): response is VeritasResponse {
-    return (
-      response instanceof Object &&
-      'id' in response &&
-      'user_data' in response &&
-      'role' in response &&
-      'issued_at' in response &&
-      'expires_at' in response &&
-      'token_type' in response
-    );
+  private isAuthResponse(
+    response: AuthResponse | ClientResponseStatus
+  ): response is AuthResponse {
+    return response instanceof Object && 'id' in response;
   }
 
   private async validateToken(
     token: string
-  ): Promise<VeritasResponse | boolean> {
+  ): Promise<AuthResponse | boolean> {
     try {
       const cached = await getCachedToken(token);
       if (cached) return cached;
 
-      const veritasClient = VeritasServiceClient.getInstance();
-      const response = await veritasClient.callVeritasService(token);
+      const authClient = AuthServiceClient.getInstance();
+      const response = await authClient.verifyToken(token);
 
-      if (this.isVeritasResponse(response)) {
+      if (this.isAuthResponse(response)) {
         await setCachedToken(token, response);
         return response;
       }
@@ -324,12 +318,12 @@ class CommonRequestController {
       if (response === ClientResponseStatus.UNAUTHORIZED) {
         return false;
       } else if (response === ClientResponseStatus.BAD_REQUEST) {
-        logger.info('Veritas Client failed');
-        throw new Error('Veritas client failed');
+        logger.info('Auth service call failed');
+        throw new Error('Auth service call failed');
       }
-      throw new Error('Veritas client failed');
+      throw new Error('Auth service call failed');
     } catch (error: any) {
-      console.error('Error calling Veritas service:', error.message);
+      console.error('Error calling auth service:', error.message);
       throw error; // Rethrow the error to be handled by the caller
     }
   }
@@ -440,13 +434,13 @@ class CommonRequestController {
         ? this.validateGeofence(req, res)
         : Promise.resolve(true);
 
-      const authPromise: Promise<{ unauthorized?: boolean; reason?: string; tokenDetails?: VeritasResponse; error?: Error }> = (async () => {
+      const authPromise: Promise<{ unauthorized?: boolean; reason?: string; tokenDetails?: AuthResponse; error?: Error }> = (async () => {
         if (authRequired) {
           if (!token) return { unauthorized: true, reason: 'missing' };
           try {
             const result = await this.validateToken(token);
             if (!result) return { unauthorized: true, reason: 'invalid' };
-            if (result !== true && this.isVeritasResponse(result)) {
+            if (result !== true && this.isAuthResponse(result)) {
               return { tokenDetails: result };
             }
             return {};
@@ -458,7 +452,7 @@ class CommonRequestController {
         if (token && matchingRoute.resolveUser) {
           try {
             const result = await this.validateToken(token);
-            if (result && result !== true && this.isVeritasResponse(result)) {
+            if (result && result !== true && this.isAuthResponse(result)) {
               return { tokenDetails: result };
             }
           } catch (e) {
@@ -477,7 +471,7 @@ class CommonRequestController {
       }
       if (geoFenceRequired) logger.info('GeoFence validation successful');
 
-      // Check auth — rethrow Veritas errors only if geo passed (prevents double-response)
+      // Check auth — rethrow auth errors only if geo passed (prevents double-response)
       if (authResult.error) {
         throw authResult.error;
       }
@@ -487,7 +481,7 @@ class CommonRequestController {
         return res.status(401).send('Unauthorized');
       }
 
-      let tokenDetails: VeritasResponse | undefined = authResult.tokenDetails;
+      let tokenDetails: AuthResponse | undefined = authResult.tokenDetails;
       if (tokenDetails) logger.info('Token validated successfully');
 
       const userIdentifier = tokenDetails ? tokenDetails.id.toString() : undefined;

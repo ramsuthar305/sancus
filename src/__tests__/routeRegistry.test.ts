@@ -50,10 +50,10 @@ apis:
           key: PATH
 `);
 
-    writeFixture(tmpDir, 'veritas.yml', `
+    writeFixture(tmpDir, 'auth.yml', `
 service:
-  name: veritas
-  host: VERITAS_URL
+  name: auth
+  host: AUTH_URL
   port: 80
 
 apis:
@@ -82,7 +82,7 @@ apis:
       registry.initialize(tmpDir);
 
       expect(registry.getService('example')).toBeDefined();
-      expect(registry.getService('veritas')).toBeDefined();
+      expect(registry.getService('auth')).toBeDefined();
     });
 
     it('should skip non-YAML files', () => {
@@ -92,7 +92,7 @@ apis:
 
       // Should still only have 2 services
       expect(registry.getService('example')).toBeDefined();
-      expect(registry.getService('veritas')).toBeDefined();
+      expect(registry.getService('auth')).toBeDefined();
     });
 
     it('should handle .yaml extension files', () => {
@@ -229,19 +229,19 @@ apis:
   });
 
   describe('findRoute() — cross-service isolation', () => {
-    it('should not find example routes in veritas service', () => {
+    it('should not find example routes in auth service', () => {
       const registry = RouteRegistry.getInstance();
       registry.initialize(tmpDir);
 
-      const route = registry.findRoute('veritas', '/api/users/', 'GET');
+      const route = registry.findRoute('auth', '/api/users/', 'GET');
       expect(route).toBeUndefined();
     });
 
-    it('should find veritas routes only in veritas service', () => {
+    it('should find auth routes only in auth service', () => {
       const registry = RouteRegistry.getInstance();
       registry.initialize(tmpDir);
 
-      const route = registry.findRoute('veritas', '/v1/generate/token', 'POST');
+      const route = registry.findRoute('auth', '/v1/generate/token', 'POST');
       expect(route).toBeDefined();
       expect(route!.path).toBe('/v1/generate/token');
     });
