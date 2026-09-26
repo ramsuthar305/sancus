@@ -98,6 +98,8 @@ apis:
 <tr><td><code>POLICIES_DIR</code></td><td>./policies</td><td>Custom policy modules</td></tr>
 <tr><td><code>TRUST_PROXY</code></td><td>loopback, linklocal, uniquelocal</td><td>Which peers may set X-Forwarded-For. See <a href="operations.html#trust-proxy">running in production</a>.</td></tr>
 <tr><td><code>REDIS_URL</code></td><td>redis://127.0.0.1:6379</td><td>Token cache, rate limits, response cache. Without it those features fail open.</td></tr>
+<tr><td><code>REDIS_COMMAND_TIMEOUT_MS</code>, <code>REDIS_BACKOFF_MS</code></td><td>250, 5000</td><td>A Redis command slower than this counts as a hang; the gateway then skips Redis for the backoff and serves uncached</td></tr>
+<tr><td><code>REDIS_ALERT_EVERY</code></td><td>1000</td><td>While Redis is down, alert on the 1st request served without it and every N after, plus one alert on recovery</td></tr>
 <tr><td><code>ALLOWED_ORIGINS</code></td><td>http://localhost:5173</td><td>CORS origins, comma-separated. A <code>/regex/</code> entry must match the whole origin, for example <code>/https:\/\/([a-z0-9-]+\.)?example\.com/</code></td></tr>
 <tr><td><code>AUTH_*</code></td><td></td><td>See <a href="auth.html">authentication</a></td></tr>
 <tr><td><code>IP_RATE_LIMIT_ENABLED</code>, <code>IP_RATE_LIMIT_CAPACITY</code>, <code>IP_RATE_LIMIT_REFILL_RATE</code></td><td>true, 200, 5</td><td>Global per-IP bucket</td></tr>

@@ -59,6 +59,7 @@ jest.mock('../services/redis.service', () => ({
   default: {
     getInstance: () => ({
       getClient: () => null,
+      noteRequest: jest.fn(),
     }),
   },
 }));

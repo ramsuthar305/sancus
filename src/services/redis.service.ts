@@ -12,6 +12,7 @@
 
 import Redis from 'ioredis';
 import getLogger from '../configs/logger';
+import AlertService from '../utils/alerts';
 
 const logger = getLogger();
 
@@ -19,6 +20,18 @@ class RedisService {
   private static instance: RedisService;
   private redis?: Redis;
   private isConnecting: boolean = false;
+  // A Redis that is connected but not answering must not stall requests. Every command has a
+  // short timeout; one timeout trips a breaker that skips Redis entirely for REDIS_BACKOFF_MS,
+  // so caching, limits and the token cache fail open at full speed until Redis answers again.
+  private readonly commandTimeoutMs = Number(process.env.REDIS_COMMAND_TIMEOUT_MS) || 250;
+  private readonly backoffMs = Number(process.env.REDIS_BACKOFF_MS) || 5000;
+  private skipUntil = 0;
+  private degraded = false; // an outage alert was sent and recovery has not been announced yet
+  // Alerts follow traffic, not time: one on the 1st request served without Redis, then one
+  // every REDIS_ALERT_EVERY requests after it (1st, 1001st, 2001st, ...), and one on recovery.
+  private readonly alertEvery = Math.max(1, Number(process.env.REDIS_ALERT_EVERY) || 1000);
+  private failedRequests = 0;
+  private outage = 0; // numbers each outage so its alerts never collide with the last one's
 
   private constructor() {
     // Private constructor to enforce singleton
@@ -39,6 +52,7 @@ class RedisService {
    * Creates connection if not already connected
    */
   public getClient(): Redis | undefined {
+    if (this.skipping) return undefined; // breaker open: callers fail open without waiting
     if (!this.redis && !this.isConnecting) {
       this.initialize();
     }
@@ -123,11 +137,22 @@ class RedisService {
       // Connection pool settings
       keepAlive: 30000, // Keep connections alive
       connectTimeout: 10000, // Connection timeout
+      commandTimeout: this.commandTimeoutMs,
       // Enable connection pooling (default behavior in ioredis)
     });
 
+    // Every command funnels through sendCommand: watch for timeouts there.
+    const client = this.redis as any;
+    const send = client.sendCommand.bind(client);
+    client.sendCommand = (command: any, stream?: unknown) => {
+      const result = send(command, stream);
+      command?.promise?.catch((err: Error) => this.noteFailure(err));
+      return result;
+    };
+
     this.redis.on('error', (err) => {
       logger.error(`Redis client error: ${err.message}`);
+      this.lastError = err.message;
     });
 
     this.redis.on('connect', () => {
@@ -138,6 +163,7 @@ class RedisService {
     this.redis.on('ready', () => {
       logger.info('Redis client ready');
       this.isConnecting = false;
+      this.skipUntil = 0;
     });
 
     this.redis.on('close', () => {
@@ -152,11 +178,70 @@ class RedisService {
     });
   }
 
+  /** Trip the breaker when a command timed out. Other errors (closed connection) already fail fast. */
+  public noteFailure(err: Error): void {
+    if (!/timed out/i.test(err?.message ?? '')) return;
+    if (Date.now() >= this.skipUntil) {
+      logger.warn({ backoffMs: this.backoffMs }, 'Redis is not answering: serving without cache, limits and token cache');
+    }
+    this.skipUntil = Date.now() + this.backoffMs;
+  }
+
+  private lastError = '';
+
+  /** Connected, ready, and not inside a skip window. */
+  public get healthy(): boolean {
+    return !!this.redis && (this.redis as any).status === 'ready' && !this.skipping;
+  }
+
+  /** Called once per proxied request: counts requests served without Redis and alerts on the schedule. */
+  public noteRequest(): void {
+    if (this.healthy) {
+      this.alertUp();
+      return;
+    }
+    this.failedRequests += 1;
+    if ((this.failedRequests - 1) % this.alertEvery === 0) this.alertDown(this.failedRequests);
+  }
+
+  private alertDown(count: number): void {
+    if (!this.degraded) this.outage += 1;
+    this.degraded = true;
+    const why = this.skipping ? `Redis is not answering within ${this.commandTimeoutMs} ms` : `the gateway cannot reach Redis${this.lastError ? ` (${this.lastError})` : ''}`;
+    AlertService.getInstance().alert(
+      `redis-down:${this.outage}:${count}`, // unique per outage and count: this schedule replaces the time-based cooldown
+      '🚨 Redis unavailable, gateway degraded',
+      `Request #${count.toLocaleString('en-US')} served without Redis: ${why}. Requests are going through without the response cache, rate limits and the token cache. Next alert at #${(count + this.alertEvery).toLocaleString('en-US')}.\n**Redis:** ${this.target()}`
+    );
+  }
+
+  private alertUp(): void {
+    if (!this.degraded) return;
+    const total = this.failedRequests;
+    this.degraded = false;
+    this.failedRequests = 0;
+    AlertService.getInstance().alert(
+      `redis-up:${this.outage}`,
+      '✅ Redis recovered',
+      `Cache, rate limits and the token cache are back on. ${total.toLocaleString('en-US')} requests were served without Redis.\n**Redis:** ${this.target()}`
+    );
+  }
+
+  /** host:port only, never credentials from REDIS_URL */
+  private target(): string {
+    try { const u = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379'); return `${u.hostname}:${u.port || 6379}`; } catch { return 'unknown'; }
+  }
+
+  /** True while the breaker is open. */
+  public get skipping(): boolean {
+    return Date.now() < this.skipUntil;
+  }
+
   /**
    * Check if Redis is available
    */
   public async isAvailable(): Promise<boolean> {
-    if (!this.redis) {
+    if (!this.redis || this.skipping) {
       return false;
     }
 
