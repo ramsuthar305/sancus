@@ -359,8 +359,8 @@ class CommonRequestController {
       }
 
       const serviceDetails = routeRegistry.getService(serviceName);
-      if (!serviceDetails) {
-        new SancusResponse(ResponseEnum.INVALID_SERVICE_NAME, {}, res);
+      if (!serviceDetails || (serviceDetails.hosts?.length && !serviceDetails.hosts.includes(req.hostname))) {
+        new SancusResponse(ResponseEnum.NOT_FOUND, {}, res);
         return;
       }
       const baseUrl = UrlUtils.extractPathWithQuery(originalUrl);
@@ -372,7 +372,13 @@ class CommonRequestController {
 
       const matchingRoute = routeRegistry.findRoute(serviceName, basePath, method as HttpMethod);
       if (!matchingRoute) {
-        new SancusResponse(ResponseEnum.BAD_REQUEST, {}, res);
+        const allowed = routeRegistry.allowedMethods(serviceName, basePath);
+        if (allowed.length > 0) {
+          res.setHeader('Allow', allowed.join(', '));
+          new SancusResponse(ResponseEnum.METHOD_NOT_ALLOWED, {}, res);
+        } else {
+          new SancusResponse(ResponseEnum.NOT_FOUND, {}, res);
+        }
         return;
       }
       logger.info(
@@ -530,7 +536,7 @@ class CommonRequestController {
 
       let hostUrl: string;
       try {
-        hostUrl = this.getHostUrl(serviceDetails.host);
+        hostUrl = this.getHostUrl(serviceDetails.host || "");
       } catch (error) {
         logger.error(error);
         if (!swrStale) {

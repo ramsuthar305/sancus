@@ -5,7 +5,6 @@ import path from 'path';
 import getLogger from './configs/logger';
 import { accessLogger, requestIdMiddleware } from './middlewares/requestContext';
 import handleMultipart from './middlewares/multipartHandler';
-import APIConfigValidator from './utils/configValidator';
 import RouteRegistry from './services/routeRegistry';
 import CommonRequestRoute from './routes/commonRequest.route';
 import GeoFenceRoute from './routes/geoFenceRequest.route';
@@ -16,14 +15,12 @@ import RateLimitService from './services/rateLimit.service';
 import RedisService from './services/redis.service';
 
 
-const apiConfigValidator = new APIConfigValidator(
-  path.join(__dirname, '..', 'api_configs')
-);
-apiConfigValidator.validateAllFiles();
-
-// Load all YAML configs and pre-compile route regexes once at startup
+// Validate + compile every YAML config once at startup (throws on invalid config),
+// then hot-reload on changes unless CONFIG_WATCH=false.
+const configDir = process.env.CONFIG_DIR || path.join(__dirname, '..', 'api_configs');
 const routeRegistry = RouteRegistry.getInstance();
-routeRegistry.initialize(path.join(__dirname, '..', 'api_configs'));
+routeRegistry.initialize(configDir);
+if (process.env.CONFIG_WATCH !== 'false') routeRegistry.watch(configDir);
 
 const app: Express = express();
 const port = 3000;

@@ -1,129 +1,54 @@
-import * as fs from 'fs';
-import * as yaml from 'js-yaml';
-import * as path from 'path';
-import getLogger from '../configs/logger';
-import { APIConfig, RateLimitConfig, Service } from '../types/api';
-import { forEach, some } from 'lodash';
+import Ajv, { ErrorObject } from 'ajv';
+import fs from 'fs';
+import yaml from 'js-yaml';
+import path from 'path';
+import schema from '../configs/apiConfig.schema.json';
+import { APIConfig } from '../types/api';
 
-// This util is to check if all the API configuration files are valid.
-// If any of the files are invalid, the server will not start.
-// This util is called from src/index.ts
-class APIConfigValidator {
-  private folderPath: string;
-  private logger = getLogger();
+const ajv = new Ajv({ allErrors: true });
+const validate = ajv.compile<APIConfig>(schema);
 
-  constructor(folderPath: string) {
-    this.folderPath = folderPath;
-  }
-
-  public validateAllFiles(): void {
-    // Read all the yaml files from the folder and validate them
-    const files = fs.readdirSync(this.folderPath);
-    const yamlFiles = files.filter(
-      (file) => path.extname(file) === '.yml' || path.extname(file) === '.yaml'
-    );
-
-    for (const file of yamlFiles) {
-      const filePath = path.join(this.folderPath, file);
-      this.validateFile(filePath);
-    }
-  }
-
-  private validateFile(filePath: string): void {
-    // Read the file and validate the contents
-    const fileContents = fs.readFileSync(filePath, 'utf8');
-
-    try {
-      const config = yaml.load(fileContents) as APIConfig;
-      this.validateAPIConfig(config);
-    } catch (error: any) {
-      this.logger.error(
-        `API configuration file ${filePath} is invalid. Error ${error.message}`
-      );
-    }
-  }
-
-  private isValidServiceConfig(serviceConfig: Service): boolean {
-    // Your validation logic for service configuration
-    // Example: Check if each service has the required fields
-    return serviceConfig.name.length>0 && serviceConfig.host.length>0 && serviceConfig.port!=null;
-  }
-
-  private validateAPIConfig(config: APIConfig): void {
-    // Check if the config has the required fields of defined types, and if the values are valid
-
-    if (config.service && !this.isValidServiceConfig(config.service)) {
-      throw new Error('Service configuration is invalid');
-    }
-
-    if (!Array.isArray(config.apis)) {
-      throw new Error('API configuration must contain an array of "apis"');
-    }
-
-    forEach(config.apis, (api) => {
-      if (!api.name || !api.description || !api.routes) {
-        throw new Error('API configuration has invalid fields');
-      }
-
-      forEach(api.routes, (route) => {
-        if (!route.path || !route.methods) {
-          throw new Error('API route has invalid fields');
-        }
-
-        if (!Array.isArray(route.methods) || route.methods.length === 0) {
-          throw new Error('API route methods must be a non-empty array');
-        }
-
-        if (some(route.methods, (method) => !this.isValidHTTPMethod(method))) {
-          throw new Error(`API route has invalid HTTP method`);
-        }
-
-        if (route.bypass && !Array.isArray(route.bypass)) {
-          throw new Error('API route bypass must be an array');
-        }
-
-        if (route.authorization && !Array.isArray(route.authorization)) {
-          throw new Error('API route authorization must be an array');
-        }
-
-        if (route.rateLimit) {
-          this.validateRateLimit(route.rateLimit);
-        }
-      });
-    });
-  }
-  private validateRateLimit(rateLimit: RateLimitConfig): void {
-    const { perMinute, perDay } = rateLimit;
-    if (
-      (perMinute !== undefined && (typeof perMinute !== 'number' || perMinute < 1)) ||
-      (perDay !== undefined && (typeof perDay !== 'number' || perDay < 1))
-    ) {
-      throw new Error('Rate limit values must be positive numbers');
-    }
-
-    const allowedKeys = ['API_KEY', 'USER', 'IP', 'USER_OR_IP'];
-    if (rateLimit.key && !allowedKeys.includes(rateLimit.key)) {
-      throw new Error(
-        `Invalid rate limit key strategy "${rateLimit.key}". Allowed: ${allowedKeys.join(', ')}`
-      );
-    }
-  }
-
-
-  private isValidHTTPMethod(method: string): boolean {
-    const validMethods = [
-      'GET',
-      'POST',
-      'PUT',
-      'PATCH',
-      'DELETE',
-      'HEAD',
-      'OPTIONS',
-      'CONNECT',
-      'TRACE'
-    ];
-    return validMethods.includes(method);
+export class ConfigError extends Error {
+  constructor(public readonly file: string, message: string) {
+    super(`${file}: ${message}`);
   }
 }
 
-export default APIConfigValidator;
+function formatErrors(errors: ErrorObject[] | null | undefined): string {
+  return (errors || [])
+    .map((e) => `${e.instancePath || '/'} ${e.message}${e.params?.allowedValues ? ` (${(e.params.allowedValues as string[]).join(', ')})` : ''}`)
+    .join('; ');
+}
+
+/** Parse and validate one YAML file. Throws ConfigError on any problem. */
+export function loadConfigFile(filePath: string): APIConfig {
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    throw new ConfigError(filePath, `YAML parse error: ${(e as Error).message}`);
+  }
+  if (!validate(parsed)) {
+    throw new ConfigError(filePath, formatErrors(validate.errors));
+  }
+  return parsed;
+}
+
+/**
+ * Load every *.yml / *.yaml in a directory. Throws on the first invalid file or on
+ * duplicate service names — an invalid config must never be served.
+ */
+export function loadConfigDir(dir: string): APIConfig[] {
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => ['.yml', '.yaml'].includes(path.extname(f)))
+    .sort();
+  const configs = files.map((f) => loadConfigFile(path.join(dir, f)));
+
+  const seen = new Set<string>();
+  for (const c of configs) {
+    if (seen.has(c.service.name)) throw new ConfigError(dir, `duplicate service name "${c.service.name}"`);
+    seen.add(c.service.name);
+  }
+  return configs;
+}
