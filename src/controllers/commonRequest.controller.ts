@@ -20,7 +20,7 @@ const logger = getLogger();
 const geoUtils = GeoUtils.getInstance(process.env.GEOFENCE_FILE || './in.json');
 geoUtils
   .loadGeoJsonData()
-  .then(() => logger.info('GeoJSON data loaded'))
+  .then(() => logger.info(geoUtils.enabled ? 'geo-fence enabled' : 'geo-fence disabled (no polygons in GEOFENCE_FILE)'))
   .catch((err) => {
     logger.error({ err }, 'Error loading GeoJSON data');
     process.exit(1);
@@ -165,7 +165,7 @@ class CommonRequestController {
       }
 
       // --- geo-fence ∥ auth ---
-      const geoRequired = !route.bypass?.includes('GEO_FENCE');
+      const geoRequired = geoUtils.enabled && !route.bypass?.includes('GEO_FENCE');
       const authRequired = !route.bypass?.includes('AUTH');
       const [geoOk, auth] = await Promise.all([
         geoRequired ? this.validateGeofence(req, res) : Promise.resolve(true),

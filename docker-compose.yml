@@ -1,0 +1,26 @@
+# One command to a running gateway: docker compose up
+# Edit api_configs/*.yml and set your upstream/auth URLs below.
+services:
+  sancus:
+    build: .
+    image: ghcr.io/ramsuthar305/sancus:latest
+    ports: ["3000:3000"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      ALLOWED_ORIGINS: http://localhost:5173
+      YOUR_SERVICE_HOST: http://host.docker.internal:8000   # upstream for api_configs/your_service_name.yml
+      AUTH_URL: http://host.docker.internal:8001            # your token-verification service
+      # AUTH_FAIL_OPEN: "true"                               # let requests through if AUTH_URL is down
+      # CONFIG_WATCH: "false"
+    volumes:
+      - ./api_configs:/app/api_configs:ro
+    depends_on:
+      redis: { condition: service_healthy }
+    extra_hosts: ["host.docker.internal:host-gateway"]
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 10

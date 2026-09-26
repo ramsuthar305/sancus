@@ -9,7 +9,7 @@
 - Declarative YAML per service, JSON-Schema validated, hot-reloaded on change, `npm run check` to lint
 - Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`
 - Pluggable auth via the ForwardAuth contract (Traefik / APISIX / Envoy style) with a shared Redis token cache
-- Geo-fencing against a GeoJSON polygon set
+- Optional geo-fencing against a GeoJSON polygon set (off until you ship polygons)
 - Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding window; `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
 - Response cache with `LRU`, `LFU`, `SWR` strategies; `X-Cache-Status`, `X-Cache-Key`, `Age`, `ETag` / 304, honours upstream `Cache-Control`
 - Upstream `nodes` with round-robin and passive health, per-service `timeout`, `retries`, `circuitBreaker`, path `rewrite`, header add/remove
@@ -28,7 +28,9 @@
 ├── api_configs/          # One YAML per upstream service
 ├── policies/             # (Optional) custom policy modules, *.js
 ├── k8s/                  # (Optional) example manifests
-├── in.json               # GeoJSON polygons treated as banned territory
+├── in.json               # GeoJSON polygons treated as banned territory (empty = geo-fence off)
+├── examples/geofence/    # sample polygon set
+├── docker-compose.yml    # gateway + Redis in one command
 └── src/
     ├── clients/          # ForwardAuth client
     ├── configs/          # logger, metrics, JSON schema
@@ -101,7 +103,8 @@ npm run check -- ./cfg   # another directory
 | `<SERVICE>_HOST` etc. | | Upstream base URL for services using `host:` |
 | `CONFIG_DIR` / `CONFIG_WATCH` | `./api_configs` / `true` | Config location and hot reload |
 | `POLICIES_DIR` | `./policies` | Custom policy modules |
-| `TRUST_PROXY` | `false` | `true`, a hop count (`1`), or Express keywords/CIDRs. Required behind a load balancer for correct client IPs |
+| `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | Which peers may set X-Forwarded-For. The default covers a load balancer or ingress in private address space; list public proxies (e.g. Cloudflare CIDRs) explicitly. `false` is refused while the IP limiter is on |
+| `IP_RATE_LIMIT_ENABLED` | `true` | Global per-IP limiter on/off |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Token cache, rate limits, response cache. Everything fails open without it |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated, `/regex/` allowed |
 | `AUTH_URL` | | Base URL of your token-verification service (`VERITAS_URL` accepted) |
@@ -125,15 +128,22 @@ npm run check -- ./cfg   # another directory
 | `ALERT_WEBHOOK_URL` / `ALERT_COOLDOWN_MS` | / `60000` | Slack/Discord-compatible webhook (`DISCORD_WEBHOOK_URL` accepted); per-key dedupe |
 | `ADMIN_TOKEN` | | If set, `/metrics`, `/routes` and `/cache` require `Authorization: Bearer <token>` |
 | `GEOFENCE_FILE` | `./in.json` | GeoJSON of banned polygons |
-| `NEW_RELIC_LICENSE_KEY` | | Only if you start with `node -r newrelic` |
 
 ---
 
-## ▶️ Setup
+## ▶️ Quick start
 
 ```bash
-git clone https://github.com/ramsuthar305/sancus.git
-cd sancus
+git clone https://github.com/ramsuthar305/sancus.git && cd sancus
+docker compose up          # gateway on :3000 + Redis; edit api_configs/*.yml and the URLs in docker-compose.yml
+curl -i localhost:3000/health/ready
+```
+
+Prebuilt images: `ghcr.io/ramsuthar305/sancus:<version>` (multi-arch, node:22-slim, non-root).
+
+## ▶️ Local development
+
+```bash
 npm install
 
 cat > .env <<'ENV'
@@ -145,9 +155,12 @@ TRUST_PROXY=false
 ENV
 
 npm run check
-npm run build && npm start   # or: npm run dev
-npm test
+npm run dev                  # ts-node + reload on change
+npm run build && npm start   # production
+npm test && npm run test:e2e # e2e needs a local Redis
 ```
+
+New Relic is not bundled. If you want it: `npm i newrelic` and start with `node -r newrelic build/index.js`.
 
 ---
 
@@ -174,7 +187,7 @@ AUTH_UPSTREAM_HEADERS=x-user-role
 
 ## 🌍 Geo-fencing
 
-Routes without `GEO_FENCE` in `bypass` require an `X-COORDINATES: <lat>,<lon>` header. A point inside any polygon in `in.json` is rejected as banned territory (`SE0405`); missing or malformed coordinates return `SE0406` / `SE0407`. Ship an empty `FeatureCollection` to disable blocking while keeping the header requirement. `GET /api/geo/check` answers the same question without proxying.
+Off by default: the shipped `in.json` has no polygons. To enable it, put a GeoJSON `FeatureCollection` of **banned** polygons in `in.json` (or `GEOFENCE_FILE`); `examples/geofence/india-states.json` is a sample. Once enabled, routes without `GEO_FENCE` in `bypass` require an `X-COORDINATES: <lat>,<lon>` header. A point inside any polygon is rejected as banned territory (`SE0405`); missing or malformed coordinates return `SE0406` / `SE0407`. `GET /api/geo/check` answers the same question without proxying.
 
 ---
 
@@ -222,7 +235,11 @@ Logs are JSON lines from pino with `requestId` on every entry. Set `LOG_LEVEL=de
 
 ## ☸️ Kubernetes
 
-`k8s/` contains example manifests. Point `deployment.yaml` at your image, put env vars in a `sancus-env` secret, use `/health/ready` as the readiness probe and `/health` as liveness, and adjust ingress hosts. Behind an AWS ALB set `TRUST_PROXY=1` and keep the ALB idle timeout below `KEEP_ALIVE_TIMEOUT_MS`.
+```bash
+kubectl apply -k k8s/
+```
+
+`k8s/` is a complete kustomize set: namespace, `sancus-env` ConfigMap, `sancus-secrets` Secret (example values, replace them), Deployment with liveness on `/health` and readiness on `/health/ready`, non-root security context, resource limits, ClusterIP Service, a generic nginx Ingress with ALB annotations in comments, HPA and PodDisruptionBudget. Set the image tag, hosts, upstream URLs and `TRUST_PROXY` for your network, and keep the load balancer idle timeout below `KEEP_ALIVE_TIMEOUT_MS`.
 
 ---
 

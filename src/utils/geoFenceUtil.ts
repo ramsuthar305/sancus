@@ -19,11 +19,19 @@ class GeoUtils {
         return GeoUtils.instance;
     }
 
-    // Function to load GeoJSON data into memory
+    /** Geo-fencing is active only when the loaded file contains at least one polygon. */
+    public get enabled(): boolean {
+        return (this.geoJsonData?.features.length ?? 0) > 0;
+    }
+
+    // Function to load GeoJSON data into memory. A missing file means "no geo-fence".
     public loadGeoJsonData(): Promise<void> {
         return new Promise((resolve, reject) => {
             fs.readFile(this.geoJsonFilePath, 'utf8', (err, data) => {
-                if (err) {
+                if (err && err.code === 'ENOENT') {
+                    this.geoJsonData = { type: 'FeatureCollection', features: [] } as unknown as GeoJsonData;
+                    resolve();
+                } else if (err) {
                     reject(err);
                 } else {
                     try {

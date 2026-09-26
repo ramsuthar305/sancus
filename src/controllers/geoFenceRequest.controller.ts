@@ -7,7 +7,7 @@ import getLogger from '../configs/logger';
 const logger = getLogger();
 
 class GeoFenceRequestController {
-    private geoUtils = GeoUtils.getInstance('./in.json');
+    private geoUtils = GeoUtils.getInstance(process.env.GEOFENCE_FILE || './in.json');
 
     constructor() {
         this.geoFence = this.geoFence.bind(this);
@@ -18,6 +18,10 @@ class GeoFenceRequestController {
         res: Response,
         next: NextFunction
     ): Promise<Response | void> {
+        if (!this.geoUtils.enabled) {
+            new SancusResponse(ResponseEnum.ALLOWED_TERRITORY, {}, res);
+            return;
+        }
         const coordinates = req.header('X-COORDINATES');
 
         if (!coordinates) {

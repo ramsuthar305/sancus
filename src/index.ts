@@ -34,13 +34,20 @@ const redisService = RedisService.getInstance();
 
 app.disable('x-powered-by');
 app.set('etag', false); // proxied responses keep the upstream ETag; gateway-generated bodies get none
-// Which proxies to trust for X-Forwarded-For; req.ip is derived from this. Default: none.
-app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
+// Which proxies to trust for X-Forwarded-For; req.ip is derived from this.
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
+app.set('trust proxy', trustProxy);
+const ipLimiterEnabled = process.env.IP_RATE_LIMIT_ENABLED !== 'false';
+if (ipLimiterEnabled && trustProxy === false) {
+  // Behind any load balancer every request would share the balancer's IP and one bucket: a site-wide 429.
+  logger.fatal('IP rate limiter is enabled but TRUST_PROXY=false. Set TRUST_PROXY to your proxy (e.g. 1, or a CIDR list) or set IP_RATE_LIMIT_ENABLED=false.');
+  process.exit(1);
+}
 
 app.use(requestIdMiddleware);
 app.use(accessLogger);
 app.use(metricsMiddleware);
-app.use(new IPRateLimiter().middleware());
+if (ipLimiterEnabled) app.use(new IPRateLimiter().middleware());
 app.use(
   compression({
     threshold: 1024,
