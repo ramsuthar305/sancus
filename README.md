@@ -130,7 +130,7 @@ npm run check -- ./cfg   # another directory
 | `IP_BLOCK_THRESHOLD` / `IP_BLOCK_WINDOW_MS` / `IP_BLOCK_DURATION_MS` | `20` / `60000` / `900000` | Block an IP after N 429s in the window, for the duration |
 | `TRUSTED_IPS` | | Comma-separated IPs that skip both limiters |
 | `UPSTREAM_TIMEOUT_MS` / `UPSTREAM_UNHEALTHY_TTL_MS` | `60000` / `30000` | Default upstream timeout; how long a failed node is skipped |
-| `UPSTREAM_MAX_SOCKETS` | `256` | Keep-alive pool size per worker to each upstream |
+| `UPSTREAM_MAX_SOCKETS` | `256` | Connections per worker to each upstream node. In-flight requests = rate x upstream latency, so this caps a worker at about `UPSTREAM_MAX_SOCKETS / latency` req/s per node (256 / 0.2 s = 1,280 req/s for a 200 ms upstream); beyond that requests queue in the gateway. Raise it when your upstream can take the concurrency; the cap is also backpressure |
 | `WORKERS` | `1` | Gateway processes sharing the port (`cluster`); use the core count of the pod |
 | `NODE_OPTIONS` | `--max-old-space-size=256 --max-semi-space-size=64` (image) | V8 heap sizes. The 64 MB young generation lets per-request objects die before a scavenge (~8% throughput) at ~100-150 MB more RSS per worker; drop it to 16 or 32 on tight memory limits |
 | `CACHE_LFU_MAX_ENTRIES` | `1000` | LFU eviction bound |
