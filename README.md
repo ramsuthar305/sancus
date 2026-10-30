@@ -131,6 +131,7 @@ npm run check -- ./cfg   # another directory
 | `UPSTREAM_TIMEOUT_MS` / `UPSTREAM_UNHEALTHY_TTL_MS` | `60000` / `30000` | Default upstream timeout; how long a failed node is skipped |
 | `UPSTREAM_MAX_SOCKETS` | `256` | Keep-alive pool size per worker to each upstream |
 | `WORKERS` | `1` | Gateway processes sharing the port (`cluster`); use the core count of the pod |
+| `NODE_OPTIONS` | `--max-old-space-size=256 --max-semi-space-size=64` (image) | V8 heap sizes. The 64 MB young generation lets per-request objects die before a scavenge (~8% throughput) at ~100-150 MB more RSS per worker; drop it to 16 or 32 on tight memory limits |
 | `CACHE_LFU_MAX_ENTRIES` | `1000` | LFU eviction bound |
 | `KEEP_ALIVE_TIMEOUT_MS` | `125000` | Must exceed your load balancer's idle timeout |
 | `SHUTDOWN_DELAY_MS` | `5000` | After SIGTERM, keep serving (readiness 503, `Connection: close`) this long so load balancers stop routing here |

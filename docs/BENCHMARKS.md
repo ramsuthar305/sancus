@@ -48,7 +48,7 @@ This is the number to quote for "what does the gateway add": the upstream alone 
 
 - One Sancus process handles about 21k req/s, and a 4-worker pod on 4 cores 30k to 37k. A service doing 5k req/s at peak needs one or two small pods.
 - At realistic load the gateway adds about 0.3 ms at the median (the oha table). That is the number your users feel.
-- Each worker uses about 250 MB under load. `NODE_OPTIONS=--max-old-space-size=256` (set in the image) trades about 2% throughput for about 40% less memory.
+- Each worker uses about 250 MB under load. `NODE_OPTIONS=--max-old-space-size=256` (set in the image) trades about 2% throughput for about 40% less memory. The image also sets `--max-semi-space-size=64`, a larger young generation that cuts scavenge work on the request path for more memory per worker.
 - Plan capacity at half the measured maximum, and cache the routes that repeat.
 
 ## Reproduce
