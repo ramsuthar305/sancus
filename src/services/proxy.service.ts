@@ -2,12 +2,14 @@ import type { Request, Response } from 'express';
 import http from 'http';
 import https from 'https';
 import CircuitBreaker from 'opossum';
+import { Readable, pipeline } from 'stream';
 import getLogger from '../configs/logger';
 import { cacheEvents, upstreamDuration, upstreamUp } from '../configs/metrics';
 import type { APIRoute, CacheConfig, HeaderRules, Service } from '../types/api';
 import type { AuthResponse } from '../types/auth';
 import ResponseEnum from '../types/responseEnums';
 import AlertService from '../utils/alerts';
+import { createCompressor, decideCompression, mergeVary } from '../utils/compression';
 import { AUTH_FORWARD_HEADER, GATEWAY_OWNED_HEADERS } from '../clients/authClient';
 import FileUtil from '../utils/fileUtil';
 import SancusResponse from '../utils/responseUtil';
@@ -283,33 +285,48 @@ class ProxyService {
     const isSse = String(headers['content-type'] ?? '').includes('text/event-stream');
     if (isSse) delete headers['content-length']; // chunked, never buffered
 
-    // --- caching -------------------------------------------------------------------------------
-    let capture: Buffer[] | undefined;
+    // --- caching decision -------------------------------------------------------------------
+    let cacheable = false;
     if (ctx.shouldCacheResponse && ctx.cacheKey && ctx.cacheConfig) {
-      const cacheable = cacheService.isCacheableResponse(status, upRes.headers, ctx.cacheConfig);
+      cacheable = cacheService.isCacheableResponse(status, upRes.headers, ctx.cacheConfig);
       cacheEvents.inc({ service: ctx.serviceName, status: cacheable ? 'MISS' : 'BYPASS' });
       if (!ctx.swrStale) Object.assign(headers, cacheService.responseHeaders(ctx.cacheConfig, ctx.cacheKey, cacheable ? 'MISS' : 'BYPASS'));
-      if (cacheable) {
-        capture = [];
-        const { cacheKey, cacheConfig } = ctx;
-        upRes.on('data', (chunk: Buffer) => capture!.push(chunk));
-        upRes.on('end', () => {
-          const headersToCache: Record<string, string> = {};
-          for (const h of ['content-type', 'content-encoding', 'content-language']) {
-            const v = upRes.headers[h];
-            if (v) headersToCache[h] = Array.isArray(v) ? v[0] : v;
-          }
-          cacheService.set(cacheKey, status, headersToCache, Buffer.concat(capture!), cacheConfig).catch((err) => logger.error({ err: err.message, cacheKey }, 'failed to write cache'));
-        });
-      }
+    }
+    if (res.headersSent && !ctx.swrStale) { upRes.resume(); return; } // e.g. multipart validation already answered
+    if (ctx.swrStale && !cacheable) { upRes.resume(); return; } // stale copy already sent, nothing to refresh
+
+    // --- compression (native zlib, only when it pays) ------------------------------------------
+    const comp = decideCompression(req, status, upRes.headers);
+    if (comp.vary) mergeVary(headers, 'Accept-Encoding');
+    else mergeVary(headers); // fold upstream `vary` and the cache's `Vary` into one header
+    const compressor = comp.encoding ? createCompressor(comp.encoding) : undefined;
+    if (compressor) {
+      headers['content-encoding'] = comp.encoding;
+      delete headers['content-length'];
+    }
+    const body: Readable = compressor ?? upRes;
+
+    // --- cache write: the bytes exactly as sent (compressed ones for a br/gzip cache key) ------
+    if (cacheable && ctx.cacheKey && ctx.cacheConfig) {
+      const capture: Buffer[] = [];
+      const { cacheKey, cacheConfig } = ctx;
+      body.on('data', (chunk: Buffer) => capture.push(chunk));
+      body.on('end', () => {
+        const headersToCache: Record<string, string> = {};
+        for (const h of ['content-type', 'content-encoding', 'content-language']) {
+          const v = headers[h];
+          if (v) headersToCache[h] = Array.isArray(v) ? v[0] : String(v);
+        }
+        cacheService.set(cacheKey, status, headersToCache, Buffer.concat(capture), cacheConfig).catch((err) => logger.error({ err: err.message, cacheKey }, 'failed to write cache'));
+      });
     }
 
     if (ctx.swrStale) {
       // Stale response already sent to the client; this round trip only refreshes the cache.
-      upRes.resume();
+      if (compressor) pipeline(upRes, compressor, (err) => err && logger.warn({ err: err.message }, 'SWR refresh stream failed'));
+      else upRes.resume();
       return;
     }
-    if (res.headersSent) { upRes.resume(); return; } // e.g. multipart validation already answered
 
     res.writeHead(status, headers);
     if (req.method === 'HEAD') {
@@ -318,7 +335,12 @@ class ProxyService {
       return;
     }
     if (isSse && typeof (res as any).flushHeaders === 'function') (res as any).flushHeaders();
-    upRes.pipe(res);
+    if (compressor) {
+      // pipeline() tears the client response down if the upstream aborts mid-body.
+      pipeline(upRes, compressor, res, (err) => err && logger.debug({ err: err.message }, 'compressed response stream ended early'));
+    } else {
+      upRes.pipe(res);
+    }
   }
 
   private fail(req: Request, res: Response, ctx: ProxyContext, err: NodeJS.ErrnoException & { status?: number }): void {

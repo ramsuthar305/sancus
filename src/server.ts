@@ -14,6 +14,7 @@ import RedisService from './services/redis.service';
 import RouteRegistry from './services/routeRegistry';
 import ResponseEnum from './types/responseEnums';
 import { parseTrustProxy } from './utils/clientIp';
+import { COMPRESSION_ENABLED, COMPRESSION_THRESHOLD } from './utils/compression';
 import CorsHandler from './utils/corsUtil';
 import SancusResponse from './utils/responseUtil';
 
@@ -54,16 +55,9 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 app.use(accessLogger);
 app.use(metricsMiddleware);
 if (ipLimiterEnabled) app.use(new IPRateLimiter().middleware());
-app.use(
-  compression({
-    threshold: 1024,
-    filter: (req, res) => {
-      // Never compress SSE — browsers buffer the whole compressed response, killing streaming
-      if (res.getHeader('Content-Type')?.toString().includes('text/event-stream')) return false;
-      return compression.filter(req, res);
-    },
-  })
-);
+// Proxied responses are compressed in ProxyService (native zlib, decided once from the upstream's
+// headers). The middleware stays only on the admin endpoints whose bodies can be large.
+if (COMPRESSION_ENABLED) app.use(['/metrics', '/routes'], compression({ threshold: COMPRESSION_THRESHOLD }));
 app.use((req: Request, res: Response, next: NextFunction) => {
   CorsHandler.setHeaders(req, res);
   next();
