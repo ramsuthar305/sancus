@@ -57,7 +57,7 @@
 <p>Plus the Node runtime metrics prom-client ships: heap, event loop lag, GC.</p>
 
 <h2>Logs</h2>
-<p>One JSON line per request from pino, with <code>requestId</code>, method, URL, status and response time. Every other log line inside that request carries the same id. <code>authorization</code>, <code>cookie</code> and <code>set-cookie</code> are masked; add to the list with <code>LOG_HEADERS_REDACT</code>, or drop headers entirely with <code>LOG_HEADERS_DROP</code>. The access log at <code>info</code> costs about 20 percent of throughput; many teams run <code>LOG_LEVEL=warn</code> and rely on metrics.</p>
+<p>One JSON line per request from pino, with <code>requestId</code>, method, URL, status and response time. Every other log line inside that request carries the same id. <code>authorization</code>, <code>cookie</code> and <code>set-cookie</code> are masked; add to the list with <code>LOG_HEADERS_REDACT</code>, or drop headers entirely with <code>LOG_HEADERS_DROP</code>. Writing an access line for every request costs throughput. Set <code>LOG_SAMPLE_RATE=0.1</code> to log one in ten successful requests: errors, 4xx, aborted requests and anything slower than <code>LOG_SLOW_MS</code> (1 s) are always logged, and a sampled-out request costs almost nothing. Metrics still count every request.</p>
 
 <h2>When Redis goes away</h2>
 <p>Redis holds the response cache, the rate-limit counters and the token cache. None of them are worth an outage, so without Redis the gateway keeps routing: every request goes straight to the upstream, limits allow everything, and each token is checked with the verifier. Readiness reports <code>DEGRADED</code> and the pod stays in service.</p>

@@ -12,13 +12,13 @@
 - Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`, and `.` / `..` path segments refused
 - Pluggable auth via the ForwardAuth contract (Traefik / APISIX / Envoy style) with a shared Redis token cache
 - Optional geo-fencing against a GeoJSON polygon set (off until you ship polygons)
-- Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding window; `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
+- Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding-window counter (O(1) per key); `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
 - Response cache with `LRU`, `LFU`, `SWR` strategies; `X-Cache-Status`, `X-Cache-Key`, `Age`, `ETag` / 304, honours upstream `Cache-Control`
 - Upstream `nodes` with round-robin and passive health, per-service `timeout`, `retries`, `circuitBreaker`, path `rewrite`, header add/remove
 - Named policies (`ip-restriction` built in, drop your own into `policies/`)
 - `X-Request-Id` honoured, echoed, forwarded, and on every JSON log line (pino)
 - `/health`, `/health/ready`, `/metrics` (Prometheus), `/routes`, `DELETE /cache/:service`
-- Multipart forwarding, SSE passthrough, gzip, keep-alive pooling, graceful drain on SIGTERM
+- Multipart forwarding, SSE passthrough, br / gzip compression (native zlib, decided once per response; cached responses are stored compressed), keep-alive pooling, graceful drain on SIGTERM
 - Optional Slack / Discord compatible webhook alerts
 
 ---
@@ -110,6 +110,7 @@ npm run check -- ./cfg   # another directory
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | Which peers may set X-Forwarded-For. The default covers a load balancer or ingress in private address space; list public proxies (e.g. Cloudflare CIDRs) explicitly. `false` is refused while the IP limiter is on |
 | `IP_RATE_LIMIT_ENABLED` | `true` | Global per-IP limiter on/off |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Token cache, rate limits, response cache. Everything fails open without it |
+| `REDIS_AUTO_PIPELINING` | `true` | Batch Redis commands issued in the same tick into one write. Cuts Redis CPU and syscalls under load |
 | `REDIS_COMMAND_TIMEOUT_MS` / `REDIS_BACKOFF_MS` | `250` / `5000` | A Redis command slower than this counts as a hang; the gateway then skips Redis for the backoff and serves uncached |
 | `REDIS_ALERT_EVERY` | `1000` | While Redis is down, alert on the 1st request served without it and every N after (1st, 1001st, 2001st...), plus one alert on recovery |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated. `/regex/` entries must match the whole origin, e.g. `/https:\/\/([a-z0-9-]+\.)?example\.com/` |
@@ -135,6 +136,8 @@ npm run check -- ./cfg   # another directory
 | `SHUTDOWN_DELAY_MS` | `5000` | After SIGTERM, keep serving (readiness 503, `Connection: close`) this long so load balancers stop routing here |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | Then drain in-flight requests for up to this long before a forced exit |
 | `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie,x-api-key,proxy-authorization` / | pino level; headers masked or removed from access logs |
+| `LOG_SAMPLE_RATE` / `LOG_SLOW_MS` | `1` / `1000` | Share of fast 1xx-3xx requests that get an access log line (`0.1` = one in ten). 4xx, 5xx, aborted and slower-than-`LOG_SLOW_MS` requests are always logged |
+| `COMPRESSION` / `COMPRESSION_THRESHOLD` | `true` / `1024` | br or gzip for compressible proxied responses at or above the threshold (bytes). `false` when your load balancer or upstream already compresses |
 | `ALERT_WEBHOOK_URL` / `ALERT_COOLDOWN_MS` | / `60000` | Slack/Discord-compatible webhook (`DISCORD_WEBHOOK_URL` accepted); per-key dedupe |
 | `ADMIN_TOKEN` | | Turns on `/metrics`, `/routes` and `DELETE /cache/:service`, which then require `Authorization: Bearer <token>`. Unset, they answer 404 |
 | `GEOFENCE_FILE` | `./in.json` | GeoJSON of banned polygons |

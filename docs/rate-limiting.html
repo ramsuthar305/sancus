@@ -55,7 +55,7 @@ app.post(&#x27;/v1/orders&#x27;, rateLimit({
 <tr><td><code>USER_OR_IP</code></td><td>user when logged in, IP otherwise</td></tr>
 <tr><td><code>IP_USER</code></td><td>the pair, so one user on two devices gets two quotas</td></tr>
 </table>
-<p>Each window is a sliding log in a Redis sorted set, run as one Lua script per window. The day window runs first, so a daily rejection does not consume a minute token.</p>
+<p>Each window is a sliding-window counter: one small Redis hash per key holding this window's count and the last window's, with the last one weighted by how much of it still overlaps. That is the approximation Cloudflare uses; it needs three fields per key however many requests a user makes, where a sorted-set log stores one entry per request. It runs as one Lua script per window, sent as EVALSHA. The day window runs first, so a daily rejection does not consume a minute token.</p>
 
 <h2>Headers the client sees</h2>
 <table>
