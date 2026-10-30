@@ -53,6 +53,7 @@
 <tr><td><code>AUTH_CLIENT_HEADERS</code></td><td></td><td>Verifier response headers returned to the client on rejection</td></tr>
 <tr><td><code>AUTH_FORWARD_HEADER</code></td><td>X-AUTHORIZED-FOR-ID</td><td>Header carrying the user id upstream</td></tr>
 <tr><td><code>AUTH_TIMEOUT_MS</code>, <code>AUTH_CACHE_TTL</code></td><td>5000, 60</td><td>Call timeout, positive-result cache seconds</td></tr>
+<tr><td><code>AUTH_LOCAL_CACHE_TTL_MS</code>, <code>AUTH_LOCAL_CACHE_MAX</code></td><td>5000, 10000</td><td>In-memory token cache per worker, checked before Redis. Adds at most this TTL to revocation lag; 0 turns it off</td></tr>
 <tr><td><code>AUTH_FAIL_OPEN</code>, <code>AUTH_STATUS_ON_ERROR</code></td><td>false, 403</td><td>Behaviour when the verifier is down</td></tr>
 <tr><td><code>STRIP_REQUEST_HEADERS</code></td><td></td><td>More headers to delete from every client request, for anything else your services trust from the gateway</td></tr>
 </table>

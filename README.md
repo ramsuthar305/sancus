@@ -124,6 +124,7 @@ npm run check -- ./cfg   # another directory
 | `AUTH_FORWARD_HEADER` | `X-AUTHORIZED-FOR-ID` | Header carrying the resolved user id upstream |
 | `STRIP_REQUEST_HEADERS` | | Extra headers deleted from every client request. `AUTH_FORWARD_HEADER` and `AUTH_UPSTREAM_HEADERS` are always deleted, so clients cannot spoof identity |
 | `AUTH_TIMEOUT_MS` / `AUTH_CACHE_TTL` | `5000` / `60` | Auth call timeout, positive-result cache seconds |
+| `AUTH_LOCAL_CACHE_TTL_MS` / `AUTH_LOCAL_CACHE_MAX` | `5000` / `10000` | In-memory token cache per worker, checked before Redis: a hot token skips its Redis GET. Adds at most this TTL to revocation lag (already up to `AUTH_CACHE_TTL`). `0` turns it off |
 | `AUTH_FAIL_OPEN` / `AUTH_STATUS_ON_ERROR` | `false` / `403` | Behaviour when the auth service is unreachable |
 | `IP_RATE_LIMIT_CAPACITY` / `IP_RATE_LIMIT_REFILL_RATE` | `200` / `5` | Global per-IP bucket size and tokens per second |
 | `IP_BLOCK_THRESHOLD` / `IP_BLOCK_WINDOW_MS` / `IP_BLOCK_DURATION_MS` | `20` / `60000` / `900000` | Block an IP after N 429s in the window, for the duration |
