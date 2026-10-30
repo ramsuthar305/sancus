@@ -24,4 +24,17 @@ describe('CORS origin matching', () => {
     expect(allowed(Cors, 'https://evil-example.com')).toBe(false);
     expect(allowed(Cors, 'https://example.com.evil.io')).toBe(false);
   });
+  it('sends Allow-Methods / Allow-Headers on preflight only', () => {
+    const Cors = load('https://app.example.com');
+    const run = (method: string) => {
+      const headers: Record<string, string> = {};
+      Cors.setHeaders({ method, get: () => 'https://app.example.com' } as any, { setHeader: (k: string, v: string) => (headers[k] = v) } as any);
+      return headers;
+    };
+    expect(run('OPTIONS')['Access-Control-Allow-Methods']).toMatch(/PATCH/);
+    expect(run('OPTIONS')['Access-Control-Allow-Headers']).toMatch(/Authorization/);
+    expect(run('GET')['Access-Control-Allow-Methods']).toBeUndefined();
+    expect(run('GET')['Access-Control-Allow-Headers']).toBeUndefined();
+    expect(run('GET')['Access-Control-Allow-Origin']).toBe('https://app.example.com');
+  });
 });

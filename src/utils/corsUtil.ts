@@ -23,8 +23,12 @@ abstract class CorsHandler {
       res.setHeader('Access-Control-Allow-Origin', origin);
     }
 
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With, Accept, Origin, Cache-Control, X-File-Name, X-Fb-Fbc, X-Fb-Fbp');
+    // Allow-Methods / Allow-Headers are only read from a preflight (OPTIONS) response; on every
+    // other response they were ~230 bytes of headers that no browser looks at.
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With, Accept, Origin, Cache-Control, X-File-Name, X-Fb-Fbc, X-Fb-Fbp');
+    }
   }
 }
 

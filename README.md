@@ -137,6 +137,7 @@ npm run check -- ./cfg   # another directory
 | `SHUTDOWN_DELAY_MS` | `5000` | After SIGTERM, keep serving (readiness 503, `Connection: close`) this long so load balancers stop routing here |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | Then drain in-flight requests for up to this long before a forced exit |
 | `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie,x-api-key,proxy-authorization` / | pino level; headers masked or removed from access logs |
+| `RATELIMIT_HEADERS` | `both` | Which rate-limit header family to send: `both`, `legacy` (`X-RateLimit-*`) or `draft` (`RateLimit-*`). One family saves three headers per limited response |
 | `LOG_SAMPLE_RATE` / `LOG_SLOW_MS` | `1` / `1000` | Share of fast 1xx-3xx requests that get an access log line (`0.1` = one in ten). 4xx, 5xx, aborted and slower-than-`LOG_SLOW_MS` requests are always logged |
 | `COMPRESSION` / `COMPRESSION_THRESHOLD` | `true` / `1024` | br or gzip for compressible proxied responses at or above the threshold (bytes). `false` when your load balancer or upstream already compresses |
 | `ALERT_WEBHOOK_URL` / `ALERT_COOLDOWN_MS` | / `60000` | Slack/Discord-compatible webhook (`DISCORD_WEBHOOK_URL` accepted); per-key dedupe |

@@ -111,6 +111,7 @@ apis:
 <tr><td><code>KEEP_ALIVE_TIMEOUT_MS</code></td><td>125000</td><td>Must exceed your load balancer's idle timeout</td></tr>
 <tr><td><code>SHUTDOWN_TIMEOUT_MS</code></td><td>10000</td><td>Drain window on SIGTERM</td></tr>
 <tr><td><code>LOG_LEVEL</code>, <code>LOG_HEADERS_REDACT</code>, <code>LOG_HEADERS_DROP</code></td><td>info, authorization,cookie,set-cookie,x-api-key,proxy-authorization, none</td><td>Log level; headers masked or removed from access logs</td></tr>
+<tr><td><code>RATELIMIT_HEADERS</code></td><td>both</td><td>Rate-limit header family: both, legacy (X-RateLimit-*) or draft (RateLimit-*)</td></tr>
 <tr><td><code>LOG_SAMPLE_RATE</code>, <code>LOG_SLOW_MS</code></td><td>1, 1000</td><td>Share of fast 1xx-3xx requests that get an access log line (0.1 = one in ten). 4xx, 5xx, aborted and slow requests are always logged</td></tr>
 <tr><td><code>COMPRESSION</code>, <code>COMPRESSION_THRESHOLD</code></td><td>true, 1024</td><td>br or gzip for compressible proxied responses at or above the threshold in bytes. Set <code>false</code> when the load balancer or upstream already compresses</td></tr>
 <tr><td><code>ALERT_WEBHOOK_URL</code>, <code>ALERT_COOLDOWN_MS</code></td><td>none, 60000</td><td>Slack or Discord webhook for 5xx, proxy errors, limit breaches, breaker events</td></tr>
