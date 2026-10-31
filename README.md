@@ -12,7 +12,7 @@
 - Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`, and `.` / `..` path segments refused
 - Pluggable auth via the ForwardAuth contract (Traefik / APISIX / Envoy style) with a shared Redis token cache
 - Optional geo-fencing against a GeoJSON polygon set (off until you ship polygons)
-- Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding-window counter (O(1) per key); `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
+- Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding-window counter (O(1) per key), optional per-route `blockFor`, rejected callers answered from memory without Redis; `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
 - Response cache with `LRU`, `LFU`, `SWR` strategies; `X-Cache-Status`, `X-Cache-Key`, `Age`, `ETag` / 304, honours upstream `Cache-Control`
 - Upstream `nodes` with round-robin and passive health, per-service `timeout`, `retries`, `circuitBreaker`, path `rewrite`, header add/remove
 - Named policies (`ip-restriction` built in, drop your own into `policies/`)
@@ -79,6 +79,7 @@ apis:
           key: USER_OR_IP           # IP | USER | API_KEY | USER_OR_IP | IP_USER
           group: search             # share this quota across every route with the same group
           hideHeaders: false
+          blockFor: 900             # optional: after a rejection, block the caller on this route for 900 s (all pods)
         cache:
           strategy: SWR             # LRU | LFU | SWR
           ttl: 300                  # seconds in Redis

@@ -2,9 +2,11 @@ jest.mock('../configs/logger', () => () => ({ info: jest.fn(), error: jest.fn(),
 jest.mock('../utils/alerts', () => ({ __esModule: true, default: { getInstance: () => ({ alert: jest.fn(), enabled: false }) } }));
 
 const mockEval = jest.fn();
+const mockPttl = jest.fn();
+const mockSet = jest.fn();
 jest.mock('../services/redis.service', () => ({
   __esModule: true,
-  default: { getInstance: () => ({ getClient: () => ({ sancusSlidingWindow: mockEval }) }) },
+  default: { getInstance: () => ({ getClient: () => ({ sancusSlidingWindow: mockEval, pttl: mockPttl, set: mockSet }) }) },
 }));
 
 import RateLimitService from '../services/rateLimit.service';
@@ -13,7 +15,7 @@ const req: any = { ip: '1.2.3.4', socket: {} };
 const base = { serviceName: 'svc', method: 'GET' as const, req };
 
 describe('RateLimitService.enforce()', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => { jest.clearAllMocks(); RateLimitService.getInstance().clearBlocks(); });
 
   it('emits both header families on allow, from the tightest window', async () => {
     mockEval
@@ -55,5 +57,40 @@ describe('RateLimitService.enforce()', () => {
     await RateLimitService.getInstance().enforce({ ...base, apiKey: 'sk_live_supersecret', route: { path: '/p', methods: ['GET'], rateLimit: { perMinute: 10, key: 'API_KEY' } } });
     expect(mockEval.mock.calls[0][0]).not.toContain('supersecret');
     expect(mockEval.mock.calls[0][0]).toMatch(/apikey:[0-9a-f]{16}:m:sw$/);
+  });
+
+  it('answers a caller it already rejected from memory, without Redis', async () => {
+    mockEval.mockResolvedValueOnce([0, 0, 17, 17]);
+    const route = { path: '/login', methods: ['GET'] as any, rateLimit: { perMinute: 5 } };
+    const first = await RateLimitService.getInstance().enforce({ ...base, route });
+    const again = await RateLimitService.getInstance().enforce({ ...base, route });
+    expect(first.allowed).toBe(false);
+    expect(again.allowed).toBe(false);
+    expect(again.retryAfterSeconds).toBeGreaterThanOrEqual(16);
+    expect(again.headers['X-RateLimit-Remaining']).toBe('0');
+    expect(mockEval).toHaveBeenCalledTimes(1);
+  });
+
+  it('blockFor: writes a shared block with NX and holds the caller for blockFor seconds', async () => {
+    mockPttl.mockResolvedValueOnce(-2);
+    mockEval.mockResolvedValueOnce([0, 0, 12, 12]);
+    const r = await RateLimitService.getInstance().enforce({ ...base, route: { path: '/otp', methods: ['GET'], rateLimit: { perMinute: 5, blockFor: 900 } } });
+    expect(r.allowed).toBe(false);
+    expect(r.retryAfterSeconds).toBe(900);
+    expect(mockSet).toHaveBeenCalledWith('ratelimit:svc:GET:/otp:ip:1.2.3.4:blocked', '1', 'PX', 900000, 'NX');
+  });
+
+  it('blockFor: a block set by another pod rejects without consuming a window', async () => {
+    mockPttl.mockResolvedValueOnce(300_000);
+    const r = await RateLimitService.getInstance().enforce({ ...base, route: { path: '/otp2', methods: ['GET'], rateLimit: { perMinute: 5, blockFor: 900 } } });
+    expect(r.allowed).toBe(false);
+    expect(r.retryAfterSeconds).toBe(300);
+    expect(mockEval).not.toHaveBeenCalled();
+  });
+
+  it('routes without blockFor never pay for the block lookup', async () => {
+    mockEval.mockResolvedValueOnce([1, 4, 0, 60]);
+    await RateLimitService.getInstance().enforce({ ...base, route: { path: '/plain', methods: ['GET'], rateLimit: { perMinute: 5 } } });
+    expect(mockPttl).not.toHaveBeenCalled();
   });
 });

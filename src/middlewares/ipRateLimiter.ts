@@ -4,6 +4,7 @@ import { rateLimited } from '../configs/metrics';
 import RedisService from '../services/redis.service';
 import AlertService from '../utils/alerts';
 import { getClientIp } from '../utils/clientIp';
+import { BlockCache } from '../utils/blockCache';
 import { rateLimitHeaders } from '../utils/rateLimitHeaders';
 import { defineScript, runScript } from '../utils/redisScript';
 
@@ -71,6 +72,8 @@ class IPRateLimiter {
   private readonly blockWindowMs: number;
   private readonly blockDurationMs: number;
   private readonly trustedIpSet: Set<string>;
+  // Blocked IPs this worker already knows about: answered with 403 without a Redis round trip.
+  private readonly blocked = new BlockCache<{ until: number }>();
 
   constructor(options: IPRateLimiterOptions = {}) {
     this.capacity = options.capacity ?? Number(process.env.IP_RATE_LIMIT_CAPACITY ?? 200);
@@ -98,6 +101,7 @@ class IPRateLimiter {
     const shouldBlock = violations >= this.blockThreshold;
     if (shouldBlock) {
       await redis.set(`blocked:ip:${ip}`, String(now), 'PX', this.blockDurationMs);
+      this.blocked.set(ip, { until: now + this.blockDurationMs });
       await redis.del(key, `ipratelimit:bucket:${ip}`);
       logger.warn({ ip, violations }, 'IP blocked for repeated rate-limit bursts');
     }
@@ -108,10 +112,22 @@ class IPRateLimiter {
     );
   }
 
+  private forbid(res: Response, blockedMs: number) {
+    res.setHeader('Retry-After', String(Math.max(1, Math.ceil(blockedMs / 1000))));
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Your IP address has been temporarily blocked due to suspicious activity.',
+      blockedUntil: new Date(Date.now() + blockedMs).toISOString(),
+    });
+  }
+
   public middleware() {
     return async (req: Request, res: Response, next: NextFunction) => {
       const ip = getClientIp(req);
       if (this.trustedIpSet.has(ip)) return next();
+
+      const known = this.blocked.get(ip);
+      if (known) return this.forbid(res, known.until - Date.now());
 
       const redis = this.redisService.getClient();
       if (!redis) return next(); // fail open
@@ -123,13 +139,8 @@ class IPRateLimiter {
 
         if (allowed === 1) return next();
         if (allowed === -1) {
-          const blockedMs = retryAfter;
-          res.setHeader('Retry-After', String(Math.ceil(blockedMs / 1000)));
-          return res.status(403).json({
-            error: 'Forbidden',
-            message: 'Your IP address has been temporarily blocked due to suspicious activity.',
-            blockedUntil: new Date(Date.now() + blockedMs).toISOString(),
-          });
+          this.blocked.set(ip, { until: Date.now() + retryAfter }); // retryAfter is the block's remaining ms here
+          return this.forbid(res, retryAfter);
         }
 
         rateLimited.inc({ service: '-', route: '-', scope: 'ip' });
