@@ -75,7 +75,8 @@
                     "perDay": { "type": "integer", "minimum": 1 },
                     "key": { "type": "string", "enum": ["API_KEY", "USER", "IP", "USER_OR_IP", "IP_USER"] },
                     "group": { "type": "string" },
-                    "hideHeaders": { "type": "boolean" }
+                    "hideHeaders": { "type": "boolean" },
+                    "blockFor": { "type": "integer", "minimum": 1, "maximum": 604800 }
                   }
                 },
                 "cache": {

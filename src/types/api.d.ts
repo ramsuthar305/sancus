@@ -10,6 +10,7 @@ interface RateLimitConfig {
   key?: 'API_KEY' | 'USER' | 'IP' | 'USER_OR_IP' | 'IP_USER';
   group?: string;        // share one quota across every route using the same group name
   hideHeaders?: boolean; // do not emit X-RateLimit-* / RateLimit-* to clients
+  blockFor?: number;     // seconds: after a rejection, block the caller on this route (all pods) this long
 }
 
 interface CacheConfig {

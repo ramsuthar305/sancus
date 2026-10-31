@@ -72,6 +72,7 @@ apis:
       - { path: /v1/geo, methods: [GET], bypass: [AUTH] }
       - { path: /v1/rl, methods: [GET], bypass: [AUTH, GEO_FENCE], rateLimit: { perMinute: 2 } }
       - { path: /v1/rlday, methods: [GET], bypass: [AUTH, GEO_FENCE], rateLimit: { perDay: 1 } }
+      - { path: /v1/rlblock, methods: [GET], bypass: [AUTH, GEO_FENCE], rateLimit: { perMinute: 2, blockFor: 120 } }
       - { path: /v1/g1, methods: [GET], bypass: [AUTH, GEO_FENCE], rateLimit: { perMinute: 2, group: g } }
       - { path: /v1/g2, methods: [GET], bypass: [AUTH, GEO_FENCE], rateLimit: { perMinute: 2, group: g } }
       - { path: /v1/hidden, methods: [GET], bypass: [AUTH, GEO_FENCE], rateLimit: { perMinute: 5, hideHeaders: true } }
@@ -289,6 +290,14 @@ async function flushRedis() {
     check('ratelimit: 3rd/min -> 429 + Retry-After', r.status === 429 && Number(r.headers['retry-after']) > 0 && r.headers['x-ratelimit-remaining'] === '0');
     r = await get(`${GW}/api/demo/v1/rl`, ip(2));
     check('ratelimit: other client IP unaffected (trust proxy)', r.status === 200);
+    await get(`${GW}/api/demo/v1/rlblock`, ip(4));
+    await get(`${GW}/api/demo/v1/rlblock`, ip(4));
+    r = await get(`${GW}/api/demo/v1/rlblock`, ip(4));
+    check('ratelimit blockFor: 3rd/min -> 429 held for blockFor (120 s), not the window', r.status === 429 && Number(r.headers['retry-after']) > 60, r.headers['retry-after']);
+    r = await get(`${GW}/api/demo/v1/rlblock`, ip(4));
+    check('ratelimit blockFor: still blocked on retry, block not extended', r.status === 429 && Number(r.headers['retry-after']) > 60 && Number(r.headers['retry-after']) <= 120);
+    r = await get(`${GW}/api/demo/v1/rlblock`, ip(5));
+    check('ratelimit blockFor: other client IP unaffected', r.status === 200);
     await get(`${GW}/api/demo/v1/rlday`, ip(3));
     r = await get(`${GW}/api/demo/v1/rlday`, ip(3));
     check('ratelimit: daily window', r.status === 429 && /Daily/.test(r.json.message));

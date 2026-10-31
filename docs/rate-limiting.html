@@ -46,7 +46,8 @@ app.post(&#x27;/v1/orders&#x27;, rateLimit({
   perDay: 5000
   key: USER_OR_IP     # IP | USER | API_KEY | USER_OR_IP | IP_USER
   group: search       # optional: share one quota across routes with the same group
-  hideHeaders: false  # true: no X-RateLimit-* headers to the client</code></pre>
+  hideHeaders: false  # true: no X-RateLimit-* headers to the client
+  blockFor: 900       # optional: after a rejection, block the caller on this route for 900 s</code></pre>
 <table>
 <tr><th>Key</th><th>Counts per</th></tr>
 <tr><td><code>IP</code></td><td>client address, as resolved by <code>TRUST_PROXY</code></td></tr>
@@ -55,6 +56,14 @@ app.post(&#x27;/v1/orders&#x27;, rateLimit({
 <tr><td><code>USER_OR_IP</code></td><td>user when logged in, IP otherwise</td></tr>
 <tr><td><code>IP_USER</code></td><td>the pair, so one user on two devices gets two quotas</td></tr>
 </table>
+
+<h2>Blocking repeat offenders</h2>
+<p>Add <code>blockFor</code> (seconds) to a route's limit and the first rejection blocks that caller on that route for that long, on every pod. Use it on login, OTP and password-reset routes: an attacker who hits the limit waits out the block instead of retrying the moment the window slides. Retries during the block do not extend it. The block is per route and per key, so other routes and other callers are untouched.</p>
+<pre><code class="language-yaml">- path: /auth/otp/verify
+  methods: [POST]
+  bypass: [AUTH]
+  rateLimit: { perMinute: 5, key: IP, blockFor: 900 }</code></pre>
+<p>Each gateway worker also remembers callers it has just rejected, for the global IP limiter as well as route limits, until their <code>Retry-After</code> runs out. Repeat requests from them are answered from memory, without a Redis round trip, so a flood of rejected traffic does not land on Redis. Rejected requests were never counted, so this changes no limit. The memory holds at most 10,000 callers per worker.</p>
 <p>Each window is a sliding-window counter: one small Redis hash per key holding this window's count and the last window's, with the last one weighted by how much of it still overlaps. That is the approximation Cloudflare uses; it needs three fields per key however many requests a user makes, where a sorted-set log stores one entry per request. It runs as one Lua script per window, sent as EVALSHA. The day window runs first, so a daily rejection does not consume a minute token.</p>
 
 <h2>Headers the client sees</h2>

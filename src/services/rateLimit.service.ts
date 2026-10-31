@@ -5,6 +5,7 @@ import { rateLimited } from '../configs/metrics';
 import type { APIRoute, HttpMethod, RateLimitConfig } from '../types/api';
 import AlertService from '../utils/alerts';
 import { getClientIp } from '../utils/clientIp';
+import { BlockCache } from '../utils/blockCache';
 import { rateLimitHeaders } from '../utils/rateLimitHeaders';
 import { defineScript, runScript } from '../utils/redisScript';
 import RedisService from './redis.service';
@@ -33,6 +34,13 @@ interface WindowResult {
 }
 
 const logger = getLogger();
+
+interface LocalBlock {
+  until: number;    // epoch ms
+  limit: number;    // for the rate-limit headers on a cached rejection
+  windowS: number;
+  message: string;
+}
 
 /**
  * Sliding-window counter (the Cloudflare / Redis-docs approximation of a sliding log). Counts are
@@ -92,6 +100,7 @@ class RateLimitService {
   private readonly redisService = RedisService.getInstance();
   private readonly alertService = AlertService.getInstance();
   private readonly trustedIpSet: Set<string>;
+  private readonly blocks = new BlockCache<LocalBlock>();
 
   private constructor() {
     this.trustedIpSet = new Set(
@@ -124,9 +133,28 @@ class RateLimitService {
     return { allowed: r[0] === 1, remaining: r[1], retryAfter: r[2], reset: r[3] };
   }
 
+  /** Forget every per-worker block (tests, and a config reload that relaxes limits). */
+  public clearBlocks(): void {
+    this.blocks.clear();
+  }
+
+  private rejected(rl: RateLimitConfig, block: LocalBlock, now: number): EnforceResult {
+    const retryAfter = Math.max(1, Math.ceil((block.until - now) / 1000));
+    return {
+      allowed: false,
+      headers: rl.hideHeaders ? {} : rateLimitHeaders(block.limit, 0, retryAfter, block.windowS),
+      retryAfterSeconds: retryAfter,
+      message: block.message,
+    };
+  }
+
   /**
    * Enforce the route's rateLimit block. Day window is checked before minute so a day
    * rejection never burns a minute token. Fails open (allows) when Redis is unreachable.
+   *
+   * A caller who was rejected is remembered in this worker until their Retry-After (or the
+   * route's blockFor) runs out, and answered from memory without touching Redis. With
+   * `blockFor`, the block is also written to Redis so every pod enforces it.
    */
   public async enforce({ serviceName, route, method, req, userId, apiKey }: EnforceParams): Promise<EnforceResult> {
     const rl = route.rateLimit;
@@ -141,9 +169,32 @@ class RateLimitService {
     const windows: Array<{ name: string; ms: number; limit: number }> = [];
     if (rl.perDay) windows.push({ name: 'd', ms: 86_400_000, limit: rl.perDay });
     if (rl.perMinute) windows.push({ name: 'm', ms: 60_000, limit: rl.perMinute });
+    const tightest = windows[windows.length - 1];
 
-    let tightest: { headers: Record<string, string>; remaining: number } | undefined;
+    const now = Date.now();
+    const known = this.blocks.get(baseKey, now);
+    if (known) {
+      rateLimited.inc({ service: serviceName, route: route.path, scope: 'route' });
+      return this.rejected(rl, known, now);
+    }
+
+    const blockKey = `${baseKey}:blocked`;
+    const blockMs = (rl.blockFor ?? 0) * 1000;
+    let best: { headers: Record<string, string>; remaining: number } | undefined;
     try {
+      if (blockMs) {
+        // Blocked by another pod? Only routes with blockFor pay for this extra round trip.
+        const redis = this.redisService.getClient();
+        if (!redis) throw new Error('Redis client unavailable');
+        const pttl = await redis.pttl(blockKey);
+        if (pttl > 0) {
+          const block = { until: now + pttl, limit: tightest.limit, windowS: tightest.ms / 1000, message: 'Temporarily blocked for exceeding the rate limit' };
+          this.blocks.set(baseKey, block);
+          rateLimited.inc({ service: serviceName, route: route.path, scope: 'route' });
+          return this.rejected(rl, block, now);
+        }
+      }
+
       for (const w of windows) {
         // `:sw` = sliding-window counter hash. New names on purpose: the sorted-set keys of the old
         // log would answer WRONGTYPE (and the limit fail open) until they expired, up to a day.
@@ -151,19 +202,28 @@ class RateLimitService {
         const headers = rl.hideHeaders ? {} : rateLimitHeaders(w.limit, result.remaining, result.reset, w.ms / 1000);
         if (!result.allowed) {
           rateLimited.inc({ service: serviceName, route: route.path, scope: 'route' });
+          let until = now + result.retryAfter * 1000;
+          if (blockMs) {
+            // NX: retries during the block never extend it.
+            await this.redisService.getClient()?.set(blockKey, '1', 'PX', blockMs, 'NX');
+            until = Math.max(until, now + blockMs);
+          }
+          const message = w.name === 'd' ? 'Daily rate limit exceeded' : 'Per-minute rate limit exceeded';
+          this.blocks.set(baseKey, { until, limit: w.limit, windowS: w.ms / 1000, message });
+          const retryAfter = Math.ceil((until - now) / 1000);
           this.alertService.alert(
             `ratelimit:${identifier}`,
             '⚠️ Rate Limit Exceeded',
-            `**Identifier:** ${identifier}\n**Endpoint:** ${method} ${route.path}\n**Service:** ${serviceName}\n**Window:** ${w.name === 'd' ? 'day' : 'minute'} (limit ${w.limit})\n**Retry After:** ${result.retryAfter}s`
+            `**Identifier:** ${identifier}\n**Endpoint:** ${method} ${route.path}\n**Service:** ${serviceName}\n**Window:** ${w.name === 'd' ? 'day' : 'minute'} (limit ${w.limit})\n**Retry After:** ${retryAfter}s${blockMs ? ` (blocked for ${rl.blockFor}s)` : ''}`
           );
           return {
             allowed: false,
-            headers,
-            retryAfterSeconds: result.retryAfter,
-            message: w.name === 'd' ? 'Daily rate limit exceeded' : 'Per-minute rate limit exceeded',
+            headers: rl.hideHeaders ? {} : rateLimitHeaders(w.limit, 0, retryAfter, w.ms / 1000),
+            retryAfterSeconds: retryAfter,
+            message,
           };
         }
-        if (!tightest || result.remaining < tightest.remaining) tightest = { headers, remaining: result.remaining };
+        if (!best || result.remaining < best.remaining) best = { headers, remaining: result.remaining };
       }
     } catch (e) {
       // ponytail: fail open — a Redis outage must not take the API down with it
@@ -171,7 +231,7 @@ class RateLimitService {
       return { allowed: true, headers: {} };
     }
 
-    return { allowed: true, headers: tightest?.headers ?? {} };
+    return { allowed: true, headers: best?.headers ?? {} };
   }
 }
 
