@@ -167,7 +167,7 @@ docker compose up          # gateway on :3000 + Redis; edit api_configs/*.yml an
 curl -i localhost:3000/health/ready
 ```
 
-Prebuilt images: `ghcr.io/ramsuthar305/sancus:<version>` (multi-arch, node:22-slim, non-root).
+Prebuilt images: `ghcr.io/ramsuthar305/sancus:<version>` (multi-arch, node:24-slim, non-root).
 
 ## ▶️ Local development
 

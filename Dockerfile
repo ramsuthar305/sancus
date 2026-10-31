@@ -1,5 +1,5 @@
 # ---- build ----
-FROM node:22-slim AS build
+FROM node:24-slim AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --no-audit --no-fund
@@ -8,7 +8,7 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 # ---- runtime ----
-FROM node:22-slim
+FROM node:24-slim
 # --max-semi-space-size=64: a larger V8 young generation, so the short-lived objects of each request
 # die before a scavenge instead of being copied or promoted. ~+8% throughput for ~100-150 MB RSS.
 ENV NODE_ENV=production PORT=3000 NODE_OPTIONS="--max-old-space-size=256 --max-semi-space-size=64"
