@@ -34,24 +34,24 @@
 <p class="lede">Kettle peaks at 1,800 requests a second at dinner time. Before putting Sancus in front of checkout, Asha wanted to know what the gateway costs per request, what each feature adds, and how much headroom there is. These are the numbers, and the script to reproduce them.</p>
 
 <div class="stat">
-<div><b>21,398</b><span>requests a second, one process</span></div>
-<div><b>37,130</b><span>requests a second, four workers, auth + limit + cache</span></div>
+<div><b>27,452</b><span>requests a second, one process</span></div>
+<div><b>47,094</b><span>requests a second, four workers, auth + limit + cache</span></div>
 <div><b>0.3 ms</b><span>added at the median, at a steady 2,000 req/s</span></div>
 <div><b>0</b><span>errors across every run</span></div>
 </div>
 
 <h2>How we measured</h2>
-<p>One gateway process on an Apple M4 laptop, Node 24, a local Redis, and a four-process Node upstream that answers 220,000 requests a second on its own, so the upstream is never the bottleneck. wrk sends load over 100 connections for 15 seconds, after a 5-second warm-up. We report the median of two runs. Any non-2xx response fails the run.</p>
+<p>One gateway process on an Apple M4 laptop, Node 24 with <code>--max-old-space-size=256</code> as in the image, a local Redis, and a four-process Node upstream that answers 220,000 requests a second on its own, so the upstream is never the bottleneck. wrk sends load over 100 connections for 15 seconds, after a 5-second warm-up. We report the median of two runs. Any non-2xx response fails the run.</p>
 <p>"As shipped" means the default config, with the access log and the per-IP limiter on. "Tuned" means <code>LOG_LEVEL=warn</code> with the per-IP limiter off, the usual setting behind a load balancer that already protects per IP.</p>
 
 <h2>Every feature, measured</h2>
-<table><tr><th>Scenario</th><th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>CPU %</th><th>RSS MB</th></tr><tr><td>direct upstream (baseline)</td><td>219,058</td><td>0.394</td><td>1.29</td><td>–</td><td>–</td></tr><tr><td>proxy, as shipped (info log + IP limiter)</td><td>16,574</td><td>5.66</td><td>8.81</td><td>121</td><td>283</td></tr><tr><td>proxy, tuned</td><td>21,398</td><td>4.45</td><td>7.98</td><td>125</td><td>269</td></tr><tr><td>proxy + route rate limit</td><td>18,313</td><td>5.13</td><td>8.7</td><td>125</td><td>278</td></tr><tr><td>proxy + auth (cached token)</td><td>18,722</td><td>5</td><td>8.68</td><td>126</td><td>266</td></tr><tr><td>cache HIT</td><td>32,376</td><td>2.89</td><td>7.38</td><td>133</td><td>274</td></tr><tr><td>auth + rate limit + cache HIT</td><td>21,494</td><td>4.36</td><td>8.18</td><td>131</td><td>268</td></tr><tr><td>proxy, tuned, 4 workers</td><td>30,814</td><td>2.9</td><td>9.56</td><td>439</td><td>996</td></tr><tr><td>auth + rate limit + cache HIT, 4 workers</td><td>37,130</td><td>2.44</td><td>7.56</td><td>441</td><td>1009</td></tr></table>
-<p>Read it top to bottom as a price list. The access log at <code>info</code> costs about 20 percent. A Redis-backed rate limit or a cached token check costs about 13 percent each. A cache hit is the fastest path because the upstream drops out of the picture. Four workers add 1.4 to 1.7 times on this laptop, where wrk competes for the same cores; on a dedicated machine they scale closer to the core count.</p>
+<table><tr><th>Scenario</th><th>req/s</th><th>p50 ms</th><th>p99 ms</th><th>CPU %</th><th>RSS MB</th></tr><tr><td>direct upstream (baseline)</td><td>221,121</td><td>0.379</td><td>1.3</td><td>–</td><td>–</td></tr><tr><td>proxy, as shipped (info log + IP limiter)</td><td>21,181</td><td>4.36</td><td>8.06</td><td>137</td><td>259</td></tr><tr><td>proxy, tuned</td><td>27,452</td><td>3.44</td><td>7.45</td><td>131</td><td>207</td></tr><tr><td>proxy + route rate limit</td><td>23,401</td><td>4.18</td><td>8.85</td><td>137</td><td>220</td></tr><tr><td>proxy + auth (cached token)</td><td>22,235</td><td>4.39</td><td>8.61</td><td>130</td><td>222</td></tr><tr><td>cache HIT</td><td>40,429</td><td>2.3</td><td>6.08</td><td>133</td><td>239</td></tr><tr><td>auth + rate limit + cache HIT</td><td>28,819</td><td>3.26</td><td>6.27</td><td>113</td><td>240</td></tr><tr><td>proxy, tuned, 4 workers</td><td>36,394</td><td>2.42</td><td>8.79</td><td>455</td><td>882</td></tr><tr><td>auth + rate limit + cache HIT, 4 workers</td><td>47,094</td><td>1.96</td><td>6.45</td><td>447</td><td>1017</td></tr></table>
+<p>Read it top to bottom as a price list. The access log at <code>info</code> and the per-IP limiter together cost about 23 percent. A Redis-backed rate limit costs about 15 percent and a cached token check about 19. A cache hit is the fastest path because the upstream drops out of the picture. Four workers add 1.3 to 1.6 times on this laptop, where wrk competes for the same cores; on a dedicated machine they scale closer to the core count.</p>
 
 <h2>At a steady 2,000 a second</h2>
 <p>The table above pushes the gateway to its limit, so most of that latency is queueing. Real traffic is steadier. Here oha holds the rate at 2,000 requests a second.</p>
-<table><tr><th>Scenario</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>p99.9 ms</th></tr><tr><td>direct upstream (baseline)</td><td>0.128</td><td>0.208</td><td>0.411</td><td>3.094</td></tr><tr><td>proxy, tuned</td><td>0.411</td><td>0.816</td><td>6.621</td><td>24.307</td></tr><tr><td>auth + rate limit + cache HIT</td><td>0.5</td><td>0.759</td><td>7.441</td><td>106.675</td></tr><tr><td>proxy, tuned, 4 workers</td><td>0.4</td><td>0.783</td><td>3.035</td><td>16.275</td></tr></table>
-<p>The upstream on its own answers in 0.13 ms. Through one Sancus process it takes 0.41 ms, so the gateway adds about 0.3 ms at the median. The p99.9 spikes are garbage collection pauses in V8; more workers spread them out.</p>
+<table><tr><th>Scenario</th><th>p50 ms</th><th>p90 ms</th><th>p99 ms</th><th>p99.9 ms</th></tr><tr><td>direct upstream (baseline)</td><td>0.124</td><td>0.186</td><td>0.3</td><td>1.21</td></tr><tr><td>proxy, tuned</td><td>0.382</td><td>0.771</td><td>4.708</td><td>14.771</td></tr><tr><td>auth + rate limit + cache HIT</td><td>0.389</td><td>0.724</td><td>4.739</td><td>10.63</td></tr><tr><td>proxy, tuned, 4 workers</td><td>0.382</td><td>0.714</td><td>1.351</td><td>9.228</td></tr></table>
+<p>The upstream on its own answers in 0.12 ms. Through one Sancus process it takes 0.38 ms, so the gateway adds about 0.3 ms at the median. The p99.9 spikes are garbage collection pauses in V8; more workers spread them out.</p>
 
 <h2>Sizing for your traffic</h2>
 <table>
@@ -65,7 +65,7 @@
 <h2>Run it yourself</h2>
 <pre><code class="language-bash">brew install wrk oha      # or your package manager
 npm ci &amp;&amp; npm run build
-npm run bench             # results in tests/bench/results/</code></pre>
+DURATION=15 npm run bench # results in tests/bench/results/</code></pre>
 <p>The script starts its own upstream and gateways, prints the exact wrk and oha commands, and stops on any non-2xx response. Run it on your own hardware and you have numbers for your capacity plan.</p>
 
 <nav class="next" aria-label="Pages"><a href="use-cases.html"><small>Previous</small><b>Three teams</b></a><a class="fwd" href="demo.html"><small>Next</small><b>The practice run</b></a></nav>

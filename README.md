@@ -132,7 +132,7 @@ npm run check -- ./cfg   # another directory
 | `UPSTREAM_TIMEOUT_MS` / `UPSTREAM_UNHEALTHY_TTL_MS` | `60000` / `30000` | Default upstream timeout; how long a failed node is skipped |
 | `UPSTREAM_MAX_SOCKETS` | `256` | Connections per worker to each upstream node. In-flight requests = rate x upstream latency, so this caps a worker at about `UPSTREAM_MAX_SOCKETS / latency` req/s per node (256 / 0.2 s = 1,280 req/s for a 200 ms upstream); beyond that requests queue in the gateway. Raise it when your upstream can take the concurrency; the cap is also backpressure |
 | `WORKERS` | `1` | Gateway processes sharing the port (`cluster`); use the core count of the pod |
-| `NODE_OPTIONS` | `--max-old-space-size=256 --max-semi-space-size=64` (image) | V8 heap sizes. The 64 MB young generation lets per-request objects die before a scavenge (~8% throughput) at ~100-150 MB more RSS per worker; drop it to 16 or 32 on tight memory limits |
+| `NODE_OPTIONS` | `--max-old-space-size=256` (image) | V8 heap limit. About 25% less RSS per worker than Node's default heap for a few percent of throughput |
 | `CACHE_LFU_MAX_ENTRIES` | `1000` | LFU eviction bound |
 | `KEEP_ALIVE_TIMEOUT_MS` | `125000` | Must exceed your load balancer's idle timeout |
 | `SHUTDOWN_DELAY_MS` | `5000` | After SIGTERM, keep serving (readiness 503, `Connection: close`) this long so load balancers stop routing here |
@@ -276,7 +276,7 @@ kubectl apply -k k8s/
 
 ## 📈 Benchmarks
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md): about 21k req/s per process, 30k to 37k with four workers, about 0.3 ms added at the median at 2k req/s, and `npm run bench` to reproduce it.
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md): about 27k req/s per process, 36k to 47k with four workers, about 0.3 ms added at the median at 2k req/s, and `npm run bench` to reproduce it.
 
 ---
 
