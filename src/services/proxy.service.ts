@@ -68,8 +68,8 @@ const UNDICI_CODES: Record<string, string> = {
   UND_ERR_CONNECT_TIMEOUT: 'ETIMEDOUT',
   UND_ERR_SOCKET: 'ECONNRESET', // "other side closed"
 };
-function normalizeCode(err: NodeJS.ErrnoException & { cause?: NodeJS.ErrnoException }): string | undefined {
-  const code = err.code ?? err.cause?.code;
+function normalizeCode(err: NodeJS.ErrnoException): string | undefined {
+  const code = err.code ?? (err.cause as NodeJS.ErrnoException | undefined)?.code;
   return (code && UNDICI_CODES[code]) || code;
 }
 const hasBody = (req: Request) => req.headers['transfer-encoding'] !== undefined || (req.headers['content-length'] !== undefined && req.headers['content-length'] !== '0');
