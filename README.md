@@ -12,13 +12,13 @@
 - Typed path params (`{int:id}`, `{str:slug}`), exact-before-param matching, 404 / 405 + `Allow`, and `.` / `..` path segments refused
 - Pluggable auth via the ForwardAuth contract (Traefik / APISIX / Envoy style) with a shared Redis token cache
 - Optional geo-fencing against a GeoJSON polygon set (off until you ship polygons)
-- Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding window; `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
+- Two-tier rate limiting: global per-IP token bucket + per-route Redis sliding-window counter (O(1) per key); `X-RateLimit-*`, `RateLimit-*`, `Retry-After`
 - Response cache with `LRU`, `LFU`, `SWR` strategies; `X-Cache-Status`, `X-Cache-Key`, `Age`, `ETag` / 304, honours upstream `Cache-Control`
 - Upstream `nodes` with round-robin and passive health, per-service `timeout`, `retries`, `circuitBreaker`, path `rewrite`, header add/remove
 - Named policies (`ip-restriction` built in, drop your own into `policies/`)
 - `X-Request-Id` honoured, echoed, forwarded, and on every JSON log line (pino)
 - `/health`, `/health/ready`, `/metrics` (Prometheus), `/routes`, `DELETE /cache/:service`
-- Multipart forwarding, SSE passthrough, gzip, keep-alive pooling, graceful drain on SIGTERM
+- Multipart forwarding, SSE passthrough, br / gzip compression (native zlib, decided once per response; cached responses are stored compressed), keep-alive pooling, graceful drain on SIGTERM
 - Optional Slack / Discord compatible webhook alerts
 
 ---
@@ -110,6 +110,7 @@ npm run check -- ./cfg   # another directory
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | Which peers may set X-Forwarded-For. The default covers a load balancer or ingress in private address space; list public proxies (e.g. Cloudflare CIDRs) explicitly. `false` is refused while the IP limiter is on |
 | `IP_RATE_LIMIT_ENABLED` | `true` | Global per-IP limiter on/off |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Token cache, rate limits, response cache. Everything fails open without it |
+| `REDIS_AUTO_PIPELINING` | `true` | Batch Redis commands issued in the same tick into one write. Cuts Redis CPU and syscalls under load |
 | `REDIS_COMMAND_TIMEOUT_MS` / `REDIS_BACKOFF_MS` | `250` / `5000` | A Redis command slower than this counts as a hang; the gateway then skips Redis for the backoff and serves uncached |
 | `REDIS_ALERT_EVERY` | `1000` | While Redis is down, alert on the 1st request served without it and every N after (1st, 1001st, 2001st...), plus one alert on recovery |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origins, comma-separated. `/regex/` entries must match the whole origin, e.g. `/https:\/\/([a-z0-9-]+\.)?example\.com/` |
@@ -123,18 +124,23 @@ npm run check -- ./cfg   # another directory
 | `AUTH_FORWARD_HEADER` | `X-AUTHORIZED-FOR-ID` | Header carrying the resolved user id upstream |
 | `STRIP_REQUEST_HEADERS` | | Extra headers deleted from every client request. `AUTH_FORWARD_HEADER` and `AUTH_UPSTREAM_HEADERS` are always deleted, so clients cannot spoof identity |
 | `AUTH_TIMEOUT_MS` / `AUTH_CACHE_TTL` | `5000` / `60` | Auth call timeout, positive-result cache seconds |
+| `AUTH_LOCAL_CACHE_TTL_MS` / `AUTH_LOCAL_CACHE_MAX` | `5000` / `10000` | In-memory token cache per worker, checked before Redis: a hot token skips its Redis GET. Adds at most this TTL to revocation lag (already up to `AUTH_CACHE_TTL`). `0` turns it off |
 | `AUTH_FAIL_OPEN` / `AUTH_STATUS_ON_ERROR` | `false` / `403` | Behaviour when the auth service is unreachable |
 | `IP_RATE_LIMIT_CAPACITY` / `IP_RATE_LIMIT_REFILL_RATE` | `200` / `5` | Global per-IP bucket size and tokens per second |
 | `IP_BLOCK_THRESHOLD` / `IP_BLOCK_WINDOW_MS` / `IP_BLOCK_DURATION_MS` | `20` / `60000` / `900000` | Block an IP after N 429s in the window, for the duration |
 | `TRUSTED_IPS` | | Comma-separated IPs that skip both limiters |
 | `UPSTREAM_TIMEOUT_MS` / `UPSTREAM_UNHEALTHY_TTL_MS` | `60000` / `30000` | Default upstream timeout; how long a failed node is skipped |
-| `UPSTREAM_MAX_SOCKETS` | `256` | Keep-alive pool size per worker to each upstream |
+| `UPSTREAM_MAX_SOCKETS` | `256` | Connections per worker to each upstream node. In-flight requests = rate x upstream latency, so this caps a worker at about `UPSTREAM_MAX_SOCKETS / latency` req/s per node (256 / 0.2 s = 1,280 req/s for a 200 ms upstream); beyond that requests queue in the gateway. Raise it when your upstream can take the concurrency; the cap is also backpressure |
 | `WORKERS` | `1` | Gateway processes sharing the port (`cluster`); use the core count of the pod |
+| `NODE_OPTIONS` | `--max-old-space-size=256` (image) | V8 heap limit. About 25% less RSS per worker than Node's default heap for a few percent of throughput |
 | `CACHE_LFU_MAX_ENTRIES` | `1000` | LFU eviction bound |
 | `KEEP_ALIVE_TIMEOUT_MS` | `125000` | Must exceed your load balancer's idle timeout |
 | `SHUTDOWN_DELAY_MS` | `5000` | After SIGTERM, keep serving (readiness 503, `Connection: close`) this long so load balancers stop routing here |
 | `SHUTDOWN_TIMEOUT_MS` | `10000` | Then drain in-flight requests for up to this long before a forced exit |
 | `LOG_LEVEL` / `LOG_HEADERS_REDACT` / `LOG_HEADERS_DROP` | `info` / `authorization,cookie,set-cookie,x-api-key,proxy-authorization` / | pino level; headers masked or removed from access logs |
+| `RATELIMIT_HEADERS` | `both` | Which rate-limit header family to send: `both`, `legacy` (`X-RateLimit-*`) or `draft` (`RateLimit-*`). One family saves three headers per limited response |
+| `LOG_SAMPLE_RATE` / `LOG_SLOW_MS` | `1` / `1000` | Share of fast 1xx-3xx requests that get an access log line (`0.1` = one in ten). 4xx, 5xx, aborted and slower-than-`LOG_SLOW_MS` requests are always logged |
+| `COMPRESSION` / `COMPRESSION_THRESHOLD` | `true` / `1024` | br or gzip for compressible proxied responses at or above the threshold (bytes). `false` when your load balancer or upstream already compresses |
 | `ALERT_WEBHOOK_URL` / `ALERT_COOLDOWN_MS` | / `60000` | Slack/Discord-compatible webhook (`DISCORD_WEBHOOK_URL` accepted); per-key dedupe |
 | `ADMIN_TOKEN` | | Turns on `/metrics`, `/routes` and `DELETE /cache/:service`, which then require `Authorization: Bearer <token>`. Unset, they answer 404 |
 | `GEOFENCE_FILE` | `./in.json` | GeoJSON of banned polygons |
@@ -161,7 +167,7 @@ docker compose up          # gateway on :3000 + Redis; edit api_configs/*.yml an
 curl -i localhost:3000/health/ready
 ```
 
-Prebuilt images: `ghcr.io/ramsuthar305/sancus:<version>` (multi-arch, node:22-slim, non-root).
+Prebuilt images: `ghcr.io/ramsuthar305/sancus:<version>` (multi-arch, node:24-slim, non-root).
 
 ## ▶️ Local development
 
@@ -270,7 +276,7 @@ kubectl apply -k k8s/
 
 ## 📈 Benchmarks
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md): about 21k req/s per process, 30k to 37k with four workers, about 0.3 ms added at the median at 2k req/s, and `npm run bench` to reproduce it.
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md): about 27k req/s per process, 36k to 47k with four workers, about 0.3 ms added at the median at 2k req/s, and `npm run bench` to reproduce it.
 
 ---
 

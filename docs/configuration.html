@@ -98,6 +98,7 @@ apis:
 <tr><td><code>POLICIES_DIR</code></td><td>./policies</td><td>Custom policy modules</td></tr>
 <tr><td><code>TRUST_PROXY</code></td><td>loopback, linklocal, uniquelocal</td><td>Which peers may set X-Forwarded-For. See <a href="operations.html#trust-proxy">running in production</a>.</td></tr>
 <tr><td><code>REDIS_URL</code></td><td>redis://127.0.0.1:6379</td><td>Token cache, rate limits, response cache. Without it those features fail open.</td></tr>
+<tr><td><code>REDIS_AUTO_PIPELINING</code></td><td>true</td><td>Batch Redis commands issued in the same tick into one write; cuts Redis CPU and syscalls under load</td></tr>
 <tr><td><code>REDIS_COMMAND_TIMEOUT_MS</code>, <code>REDIS_BACKOFF_MS</code></td><td>250, 5000</td><td>A Redis command slower than this counts as a hang; the gateway then skips Redis for the backoff and serves uncached</td></tr>
 <tr><td><code>REDIS_ALERT_EVERY</code></td><td>1000</td><td>While Redis is down, alert on the 1st request served without it and every N after, plus one alert on recovery</td></tr>
 <tr><td><code>ALLOWED_ORIGINS</code></td><td>http://localhost:5173</td><td>CORS origins, comma-separated. A <code>/regex/</code> entry must match the whole origin, for example <code>/https:\/\/([a-z0-9-]+\.)?example\.com/</code></td></tr>
@@ -110,6 +111,9 @@ apis:
 <tr><td><code>KEEP_ALIVE_TIMEOUT_MS</code></td><td>125000</td><td>Must exceed your load balancer's idle timeout</td></tr>
 <tr><td><code>SHUTDOWN_TIMEOUT_MS</code></td><td>10000</td><td>Drain window on SIGTERM</td></tr>
 <tr><td><code>LOG_LEVEL</code>, <code>LOG_HEADERS_REDACT</code>, <code>LOG_HEADERS_DROP</code></td><td>info, authorization,cookie,set-cookie,x-api-key,proxy-authorization, none</td><td>Log level; headers masked or removed from access logs</td></tr>
+<tr><td><code>RATELIMIT_HEADERS</code></td><td>both</td><td>Rate-limit header family: both, legacy (X-RateLimit-*) or draft (RateLimit-*)</td></tr>
+<tr><td><code>LOG_SAMPLE_RATE</code>, <code>LOG_SLOW_MS</code></td><td>1, 1000</td><td>Share of fast 1xx-3xx requests that get an access log line (0.1 = one in ten). 4xx, 5xx, aborted and slow requests are always logged</td></tr>
+<tr><td><code>COMPRESSION</code>, <code>COMPRESSION_THRESHOLD</code></td><td>true, 1024</td><td>br or gzip for compressible proxied responses at or above the threshold in bytes. Set <code>false</code> when the load balancer or upstream already compresses</td></tr>
 <tr><td><code>ALERT_WEBHOOK_URL</code>, <code>ALERT_COOLDOWN_MS</code></td><td>none, 60000</td><td>Slack or Discord webhook for 5xx, proxy errors, limit breaches, breaker events</td></tr>
 <tr><td><code>ADMIN_TOKEN</code></td><td>none</td><td>Turns on <code>/metrics</code>, <code>/routes</code> and <code>DELETE /cache</code>, behind this bearer token. Unset, they answer 404.</td></tr>
 <tr><td><code>GEOFENCE_FILE</code></td><td>./in.json</td><td>GeoJSON of banned polygons. Empty means off.</td></tr>

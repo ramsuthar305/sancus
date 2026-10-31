@@ -1,13 +1,16 @@
 import type { Request, Response } from 'express';
-import http from 'http';
-import https from 'https';
+import http, { IncomingHttpHeaders } from 'http';
+import { EventEmitter } from 'events';
 import CircuitBreaker from 'opossum';
+import { Readable, pipeline } from 'stream';
+import { Dispatcher, Pool } from 'undici';
 import getLogger from '../configs/logger';
 import { cacheEvents, upstreamDuration, upstreamUp } from '../configs/metrics';
 import type { APIRoute, CacheConfig, HeaderRules, Service } from '../types/api';
 import type { AuthResponse } from '../types/auth';
 import ResponseEnum from '../types/responseEnums';
 import AlertService from '../utils/alerts';
+import { createCompressor, decideCompression, mergeVary } from '../utils/compression';
 import { AUTH_FORWARD_HEADER, GATEWAY_OWNED_HEADERS } from '../clients/authClient';
 import FileUtil from '../utils/fileUtil';
 import SancusResponse from '../utils/responseUtil';
@@ -52,16 +55,28 @@ const NODE_DOWN = new Set(['ECONNREFUSED', 'EHOSTUNREACH', 'ENOTFOUND', 'EAI_AGA
 // RFC 9110 §7.6.1: never forwarded in either direction.
 const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'proxy-connection']);
 
-// One pool per gateway process. Free sockets are never capped below the busy limit: capping them
-// (the old maxFreeSockets: 32) destroyed idle sockets under load and exhausted ephemeral ports.
+// Connections per upstream node per worker. By Little's law, in-flight requests = rate x latency,
+// so this caps one worker at about MAX_SOCKETS / upstream-latency requests per second per node
+// (256 / 0.2 s = 1,280 req/s for a 200 ms upstream); past that, requests queue here. The cap is
+// also backpressure that keeps a spike from opening unlimited connections to the upstream.
 const MAX_SOCKETS = Number(process.env.UPSTREAM_MAX_SOCKETS) || 256;
-const agentOptions = { keepAlive: true, maxSockets: MAX_SOCKETS, maxFreeSockets: MAX_SOCKETS, scheduling: 'lifo' as const, timeout: 60_000 };
-const httpAgent = new http.Agent(agentOptions);
-const httpsAgent = new https.Agent(agentOptions);
+
+// undici reports its own codes; map them onto the ones the retry / node-down / 502-504 logic uses.
+const UNDICI_CODES: Record<string, string> = {
+  UND_ERR_HEADERS_TIMEOUT: 'ETIMEDOUT',
+  UND_ERR_BODY_TIMEOUT: 'ETIMEDOUT',
+  UND_ERR_CONNECT_TIMEOUT: 'ETIMEDOUT',
+  UND_ERR_SOCKET: 'ECONNRESET', // "other side closed"
+};
+function normalizeCode(err: NodeJS.ErrnoException): string | undefined {
+  const code = err.code ?? (err.cause as NodeJS.ErrnoException | undefined)?.code;
+  return (code && UNDICI_CODES[code]) || code;
+}
+const hasBody = (req: Request) => req.headers['transfer-encoding'] !== undefined || (req.headers['content-length'] !== undefined && req.headers['content-length'] !== '0');
 
 /**
- * Direct Node http(s).request pipe to the upstream. Replaces http-proxy: ~40% less CPU per
- * request, and every header decision is explicit here rather than inside the library.
+ * Proxies to the upstream through undici pools (one per node): a lighter client than
+ * http.request, with every header decision explicit here rather than inside a proxy library.
  */
 class ProxyService {
   private static instance: ProxyService;
@@ -70,6 +85,7 @@ class ProxyService {
   private readonly breakers = new Map<string, CircuitBreaker>();
   private readonly rewrites = new Map<string, RegExp>();
   private readonly targets = new Map<string, Target>();
+  private readonly pools = new Map<string, Pool>();
 
   private constructor() {}
 
@@ -217,6 +233,16 @@ class ProxyService {
     return { body: Buffer.concat(parts), contentType: `multipart/form-data; boundary=${boundary}` };
   }
 
+  /** One keep-alive pool per upstream node (origin), shared by every request in this worker. */
+  private pool(node: string): Pool {
+    let p = this.pools.get(node);
+    if (!p) {
+      p = new Pool(new URL(node).origin, { connections: MAX_SOCKETS, pipelining: 1, keepAliveTimeout: 60_000 });
+      this.pools.set(node, p);
+    }
+    return p;
+  }
+
   private attempt(req: Request, res: Response, ctx: ProxyContext): Promise<void> {
     return new Promise((resolve, reject) => {
       const nodes = this.resolveNodes(ctx.service);
@@ -226,47 +252,50 @@ class ProxyService {
       ctx.startedAt = Date.now();
 
       const headers = this.upstreamHeaders(req, ctx, target);
-      let body: Buffer | undefined;
+      delete headers.expect; // undici refuses Expect; a proxy answers 100-continue itself anyway
+      let body: Buffer | Request | undefined;
       if (ctx.uploadedFiles?.length && String(req.headers['content-type'] ?? '').includes('multipart/form-data')) {
         const mp = this.multipartBody(req, res, ctx.uploadedFiles);
         if (!mp) return resolve(); // 400 already sent
         body = mp.body;
         headers['content-type'] = mp.contentType;
         headers['content-length'] = String(body.length);
+      } else if (hasBody(req)) {
+        body = req;
       }
 
-      const upReq = (target.isHttps ? https : http).request(
-        { host: target.host, port: target.port, path: req.url, method: req.method, headers, agent: target.isHttps ? httpsAgent : httpAgent, timeout: ctx.service.timeout ?? DEFAULT_TIMEOUT_MS },
-        (upRes) => {
-          this.onUpstreamResponse(upRes, req, res, ctx);
-          const status = upRes.statusCode ?? 0;
-          if (status >= 500) reject(Object.assign(new Error(`upstream ${status}`), { code: 'UPSTREAM_5XX', status }));
+      const timeout = ctx.service.timeout ?? DEFAULT_TIMEOUT_MS;
+      // Client went away: stop the upstream request instead of finishing it for nobody. undici
+      // accepts an EventEmitter as the signal; an AbortController would build a DOMException on
+      // every request, so this one only costs anything when a client actually hangs up.
+      const abort = new EventEmitter();
+      res.on('close', () => { if (!res.writableFinished) abort.emit('abort'); });
+
+      this.pool(node)
+        .request({ path: req.url, method: req.method as Dispatcher.HttpMethod, headers: headers as Record<string, string | string[]>, body, signal: abort, headersTimeout: timeout, bodyTimeout: timeout })
+        .then((up) => {
+          this.onUpstreamResponse(up.statusCode, up.headers as IncomingHttpHeaders, up.body, req, res, ctx);
+          if (up.statusCode >= 500) reject(Object.assign(new Error(`upstream ${up.statusCode}`), { code: 'UPSTREAM_5XX', status: up.statusCode }));
           else resolve();
-        }
-      );
-
-      upReq.on('timeout', () => upReq.destroy(Object.assign(new Error('upstream timeout'), { code: 'ETIMEDOUT' })));
-      upReq.on('error', (err: NodeJS.ErrnoException) => {
-        const retryable = RETRYABLE.has(err.code ?? '');
-        if (NODE_DOWN.has(err.code ?? '')) this.markDown(ctx.serviceName, node);
-        if (retryable && !res.headersSent && IDEMPOTENT.has(ctx.method) && ctx.attempt < (ctx.service.retries ?? 0)) {
-          ctx.attempt += 1;
-          logger.warn({ service: ctx.serviceName, node, attempt: ctx.attempt, err: err.code }, 'retrying upstream');
-          this.attempt(req, res, ctx).then(resolve, reject);
-          return;
-        }
-        reject(err);
-      });
-      // Client went away: stop the upstream request instead of finishing it for nobody.
-      res.on('close', () => { if (!res.writableFinished) upReq.destroy(); });
-
-      if (body) upReq.end(body);
-      else req.pipe(upReq);
+        })
+        .catch((raw: NodeJS.ErrnoException) => {
+          // Never mutate undici's error: some (an AbortError when the client hangs up before the
+          // upstream answers) have a read-only `code`, and a throw here would be an uncaught crash.
+          const err: NodeJS.ErrnoException = Object.assign(new Error(raw.message), { code: normalizeCode(raw), cause: raw });
+          const retryable = RETRYABLE.has(err.code ?? '');
+          if (NODE_DOWN.has(err.code ?? '')) this.markDown(ctx.serviceName, node);
+          if (retryable && !res.headersSent && IDEMPOTENT.has(ctx.method) && ctx.attempt < (ctx.service.retries ?? 0)) {
+            ctx.attempt += 1;
+            logger.warn({ service: ctx.serviceName, node, attempt: ctx.attempt, err: err.code }, 'retrying upstream');
+            this.attempt(req, res, ctx).then(resolve, reject);
+            return;
+          }
+          reject(err);
+        });
     });
   }
 
-  private onUpstreamResponse(upRes: http.IncomingMessage, req: Request, res: Response, ctx: ProxyContext): void {
-    const status = upRes.statusCode ?? 0;
+  private onUpstreamResponse(status: number, upHeaders: IncomingHttpHeaders, upBody: Readable, req: Request, res: Response, ctx: ProxyContext): void {
     upstreamDuration.observe({ service: ctx.serviceName, route: ctx.route.path, method: ctx.method, code: String(status) }, (Date.now() - ctx.startedAt) / 1000);
     upstreamUp.set({ service: ctx.serviceName, node: ctx.destination }, 1);
 
@@ -274,51 +303,76 @@ class ProxyService {
       alertService.alert(
         `5xx:${ctx.serviceName}:${ctx.method}:${ctx.route.path}:${status}`,
         `🚨 Backend ${status} Error`,
-        `**Service:** ${ctx.serviceName}\n**Request:** ${ctx.method} ${ctx.basePath}\n**Status:** ${status} ${upRes.statusMessage}\n**Destination:** ${ctx.destination}\n**Request ID:** \`${ctx.correlationalId}\``
+        `**Service:** ${ctx.serviceName}\n**Request:** ${ctx.method} ${ctx.basePath}\n**Status:** ${status} ${http.STATUS_CODES[status] ?? ''}\n**Destination:** ${ctx.destination}\n**Request ID:** \`${ctx.correlationalId}\``
       );
     }
 
     const headers: http.OutgoingHttpHeaders = {};
-    for (const [k, v] of Object.entries(upRes.headers)) if (!HOP_BY_HOP.has(k) && v !== undefined) headers[k] = v;
+    for (const [k, v] of Object.entries(upHeaders)) if (!HOP_BY_HOP.has(k) && v !== undefined) headers[k] = v;
     const isSse = String(headers['content-type'] ?? '').includes('text/event-stream');
     if (isSse) delete headers['content-length']; // chunked, never buffered
 
-    // --- caching -------------------------------------------------------------------------------
-    let capture: Buffer[] | undefined;
+    // --- caching decision -------------------------------------------------------------------
+    let cacheable = false;
     if (ctx.shouldCacheResponse && ctx.cacheKey && ctx.cacheConfig) {
-      const cacheable = cacheService.isCacheableResponse(status, upRes.headers, ctx.cacheConfig);
+      cacheable = cacheService.isCacheableResponse(status, upHeaders, ctx.cacheConfig);
       cacheEvents.inc({ service: ctx.serviceName, status: cacheable ? 'MISS' : 'BYPASS' });
       if (!ctx.swrStale) Object.assign(headers, cacheService.responseHeaders(ctx.cacheConfig, ctx.cacheKey, cacheable ? 'MISS' : 'BYPASS'));
-      if (cacheable) {
-        capture = [];
-        const { cacheKey, cacheConfig } = ctx;
-        upRes.on('data', (chunk: Buffer) => capture!.push(chunk));
-        upRes.on('end', () => {
-          const headersToCache: Record<string, string> = {};
-          for (const h of ['content-type', 'content-encoding', 'content-language']) {
-            const v = upRes.headers[h];
-            if (v) headersToCache[h] = Array.isArray(v) ? v[0] : v;
-          }
-          cacheService.set(cacheKey, status, headersToCache, Buffer.concat(capture!), cacheConfig).catch((err) => logger.error({ err: err.message, cacheKey }, 'failed to write cache'));
-        });
-      }
+    }
+    if (res.headersSent && !ctx.swrStale) { upBody.resume(); return; } // e.g. multipart validation already answered
+    if (ctx.swrStale && !cacheable) { upBody.resume(); return; } // stale copy already sent, nothing to refresh
+
+    // --- compression (native zlib, only when it pays) ------------------------------------------
+    const comp = decideCompression(req, status, upHeaders);
+    if (comp.vary) mergeVary(headers, 'Accept-Encoding');
+    else mergeVary(headers); // fold upstream `vary` and the cache's `Vary` into one header
+    const compressor = comp.encoding ? createCompressor(comp.encoding) : undefined;
+    if (compressor) {
+      headers['content-encoding'] = comp.encoding;
+      delete headers['content-length'];
+    }
+    const body: Readable = compressor ?? upBody;
+
+    // --- cache write: the bytes exactly as sent (compressed ones for a br/gzip cache key) ------
+    if (cacheable && ctx.cacheKey && ctx.cacheConfig) {
+      const capture: Buffer[] = [];
+      const { cacheKey, cacheConfig } = ctx;
+      body.on('data', (chunk: Buffer) => capture.push(chunk));
+      body.on('end', () => {
+        const headersToCache: Record<string, string> = {};
+        for (const h of ['content-type', 'content-encoding', 'content-language']) {
+          const v = headers[h];
+          if (v) headersToCache[h] = Array.isArray(v) ? v[0] : String(v);
+        }
+        cacheService.set(cacheKey, status, headersToCache, Buffer.concat(capture), cacheConfig).catch((err) => logger.error({ err: err.message, cacheKey }, 'failed to write cache'));
+      });
     }
 
     if (ctx.swrStale) {
       // Stale response already sent to the client; this round trip only refreshes the cache.
-      upRes.resume();
+      if (compressor) pipeline(upBody, compressor, (err) => err && logger.warn({ err: err.message }, 'SWR refresh stream failed'));
+      else upBody.resume();
       return;
     }
-    if (res.headersSent) { upRes.resume(); return; } // e.g. multipart validation already answered
 
     res.writeHead(status, headers);
     if (req.method === 'HEAD') {
-      upRes.resume();
+      upBody.resume();
       res.end();
       return;
     }
     if (isSse && typeof (res as any).flushHeaders === 'function') (res as any).flushHeaders();
-    upRes.pipe(res);
+    // Neither side may be left hanging: an upstream failing mid-body closes the client response,
+    // and a client going away destroys the upstream body (which aborts the request). Uncompressed
+    // bodies use pipe() with that wiring by hand: stream.pipeline() builds an AbortController and a
+    // DOMException on every call, ~4% of CPU on this path.
+    if (compressor) {
+      pipeline(upBody, compressor, res, (err) => err && logger.debug({ err: err.message }, 'compressed response stream ended early'));
+    } else {
+      upBody.on('error', (err) => { logger.debug({ err: err.message }, 'upstream body failed mid-stream'); res.destroy(); });
+      res.on('close', () => { if (!upBody.readableEnded) upBody.destroy(); });
+      upBody.pipe(res);
+    }
   }
 
   private fail(req: Request, res: Response, ctx: ProxyContext, err: NodeJS.ErrnoException & { status?: number }): void {

@@ -96,12 +96,12 @@
 <h2>What each station costs</h2>
 <p>One gateway process on a laptop, 100 connections at once. <a href="benchmarks.html">Chapter 5</a> has the method.</p>
 <div class="stat">
-<div><b>21,398</b><span>req/s, stations 1 and 6 only</span></div>
-<div><b>18,313</b><span>req/s with a rate limit</span></div>
-<div><b>18,722</b><span>req/s with a cached token check</span></div>
-<div><b>32,376</b><span>req/s answered from cache</span></div>
+<div><b>27,452</b><span>req/s, stations 1 and 6 only</span></div>
+<div><b>23,401</b><span>req/s with a rate limit</span></div>
+<div><b>22,235</b><span>req/s with a cached token check</span></div>
+<div><b>40,429</b><span>req/s answered from cache</span></div>
 </div>
-<p>Each Redis-backed station costs about 13 percent. A cache hit beats a plain proxy because the upstream drops out of the picture.</p>
+<p>Each Redis-backed station costs about 15 to 19 percent. A cache hit beats a plain proxy because the upstream drops out of the picture.</p>
 
 <nav class="next" aria-label="Pages"><a href="getting-started.html"><small>Previous</small><b>Hour one</b></a><a class="fwd" href="use-cases.html"><small>Next</small><b>Three teams</b></a></nav>
 <footer>Sancus is MIT licensed. <a href="https://github.com/ramsuthar305/sancus/tree/main/docs">Edit these pages on GitHub</a>.</footer>

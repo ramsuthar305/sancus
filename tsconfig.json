@@ -12,8 +12,8 @@
 
     /* Language and Environment */
     "types": ["node"],
-    "target": "es2016",                                  /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
-    "lib": ["es6"],                                      /* Specify a set of bundled library declaration files that describe the target runtime environment. */
+    "target": "ES2022",                                  /* Node 22 runs ES2022 natively: async/await stays native instead of being emitted as generators + __awaiter. */
+    "lib": ["ES2022"],                                      /* Specify a set of bundled library declaration files that describe the target runtime environment. */
     // "jsx": "preserve",                                /* Specify what JSX code is generated. */
     // "experimentalDecorators": true,                   /* Enable experimental support for legacy experimental decorators. */
     // "emitDecoratorMetadata": true,                    /* Emit design-type metadata for decorated declarations in source files. */
@@ -22,7 +22,7 @@
     // "jsxImportSource": "",                            /* Specify module specifier used to import the JSX factory functions when using 'jsx: react-jsx*'. */
     // "reactNamespace": "",                             /* Specify the object invoked for 'createElement'. This only applies when targeting 'react' JSX emit. */
     // "noLib": true,                                    /* Disable including any library files, including the default lib.d.ts. */
-    // "useDefineForClassFields": true,                  /* Emit ECMAScript-standard-compliant class fields. */
+    "useDefineForClassFields": false,                    /* Keep the class-field semantics the ES2016 build had (assign in the constructor). */
     // "moduleDetection": "auto",                        /* Control what method is used to detect module-format JS files. */
 
     /* Modules */

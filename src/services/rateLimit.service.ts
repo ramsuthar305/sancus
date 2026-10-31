@@ -6,6 +6,7 @@ import type { APIRoute, HttpMethod, RateLimitConfig } from '../types/api';
 import AlertService from '../utils/alerts';
 import { getClientIp } from '../utils/clientIp';
 import { rateLimitHeaders } from '../utils/rateLimitHeaders';
+import { defineScript, runScript } from '../utils/redisScript';
 import RedisService from './redis.service';
 
 interface EnforceParams {
@@ -33,28 +34,58 @@ interface WindowResult {
 
 const logger = getLogger();
 
-// Sliding-window log in a sorted set. Returns {allowed, remaining, retryAfter, reset} in seconds.
-const SLIDING_WINDOW_SCRIPT = `
+/**
+ * Sliding-window counter (the Cloudflare / Redis-docs approximation of a sliding log). Counts are
+ * kept for the current fixed window and the one before it; the estimate is
+ *   previous * (share of the previous window still inside the sliding window) + current.
+ * One hash of three fields per key, O(1) time and memory, however many requests a user makes
+ * (the old sorted-set log stored one member per request: up to `perDay` members per user).
+ * Rejected requests are not counted. Returns {allowed, remaining, retryAfter, reset} in seconds.
+ */
+const SLIDING_WINDOW = defineScript('sancusSlidingWindow', 1, `
   local key = KEYS[1]
   local now = tonumber(ARGV[1])
   local windowMs = tonumber(ARGV[2])
   local limit = tonumber(ARGV[3])
 
-  redis.call('ZREMRANGEBYSCORE', key, 0, now - windowMs)
-  local current = redis.call('ZCARD', key)
-  local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-  local reset = math.ceil(windowMs / 1000)
-  if oldest and oldest[2] then
-    reset = math.max(1, math.ceil((tonumber(oldest[2]) + windowMs - now) / 1000))
+  local start = now - (now % windowMs)
+  local h = redis.call('HMGET', key, 'w', 'c', 'p')
+  local w = tonumber(h[1])
+  local cur = tonumber(h[2]) or 0
+  local prev = tonumber(h[3]) or 0
+  local rolled = w ~= start
+  if rolled then
+    if w == start - windowMs then prev = cur else prev = 0 end
+    cur = 0
   end
 
-  if current < limit then
-    redis.call('ZADD', key, now, now .. '-' .. math.random())
-    redis.call('PEXPIRE', key, windowMs)
-    return {1, limit - current - 1, 0, reset}
+  local elapsed = now - start
+  local weight = (windowMs - elapsed) / windowMs
+  local reset = math.max(1, math.ceil((windowMs - elapsed) / 1000))
+
+  if prev * weight + cur + 1 <= limit then
+    cur = cur + 1
+    redis.call('HSET', key, 'w', start, 'c', cur, 'p', prev)
+    redis.call('PEXPIRE', key, windowMs * 2)
+    return {1, math.max(0, math.floor(limit - (prev * weight + cur))), 0, reset}
   end
-  return {0, 0, reset, reset}
-`;
+
+  -- Rejected: wait until one more request fits under the estimate.
+  local waitMs
+  if cur + 1 <= limit and prev > 0 then
+    waitMs = windowMs * (1 - (limit - cur - 1) / prev) - elapsed      -- later in this window
+  else
+    local t = 0                                                         -- in the next window, prev = cur
+    if cur > limit - 1 then t = windowMs * (1 - (limit - 1) / cur) end
+    waitMs = (windowMs - elapsed) + t
+  end
+  if rolled then
+    redis.call('HSET', key, 'w', start, 'c', cur, 'p', prev)
+    redis.call('PEXPIRE', key, windowMs * 2)
+  end
+  local retryAfter = math.max(1, math.ceil(waitMs / 1000))
+  return {0, 0, retryAfter, retryAfter}
+`);
 
 class RateLimitService {
   private static instance: RateLimitService;
@@ -89,7 +120,7 @@ class RateLimitService {
   private async consumeWindow(key: string, windowMs: number, limit: number): Promise<WindowResult> {
     const redis = this.redisService.getClient();
     if (!redis) throw new Error('Redis client unavailable');
-    const r = (await redis.eval(SLIDING_WINDOW_SCRIPT, 1, key, Date.now(), windowMs, limit)) as number[];
+    const r = await runScript<number[]>(redis, SLIDING_WINDOW, key, Date.now(), windowMs, limit);
     return { allowed: r[0] === 1, remaining: r[1], retryAfter: r[2], reset: r[3] };
   }
 
@@ -114,7 +145,9 @@ class RateLimitService {
     let tightest: { headers: Record<string, string>; remaining: number } | undefined;
     try {
       for (const w of windows) {
-        const result = await this.consumeWindow(`${baseKey}:${w.name}`, w.ms, w.limit);
+        // `:sw` = sliding-window counter hash. New names on purpose: the sorted-set keys of the old
+        // log would answer WRONGTYPE (and the limit fail open) until they expired, up to a day.
+        const result = await this.consumeWindow(`${baseKey}:${w.name}:sw`, w.ms, w.limit);
         const headers = rl.hideHeaders ? {} : rateLimitHeaders(w.limit, result.remaining, result.reset, w.ms / 1000);
         if (!result.allowed) {
           rateLimited.inc({ service: serviceName, route: route.path, scope: 'route' });

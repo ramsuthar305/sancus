@@ -4,7 +4,7 @@ jest.mock('../utils/alerts', () => ({ __esModule: true, default: { getInstance: 
 const mockEval = jest.fn();
 jest.mock('../services/redis.service', () => ({
   __esModule: true,
-  default: { getInstance: () => ({ getClient: () => ({ eval: mockEval }) }) },
+  default: { getInstance: () => ({ getClient: () => ({ sancusSlidingWindow: mockEval }) }) },
 }));
 
 import RateLimitService from '../services/rateLimit.service';
@@ -26,7 +26,7 @@ describe('RateLimitService.enforce()', () => {
     expect(r.headers['RateLimit-Limit']).toBe('10, 10;w=60');
     expect(r.headers['RateLimit-Reset']).toBe('42');
     // day window checked first so a day rejection never burns a minute token
-    expect(mockEval.mock.calls[0][2]).toMatch(/:d$/);
+    expect(mockEval.mock.calls[0][0]).toMatch(/:d:sw$/);
   });
 
   it('rejects with retryAfter when a window is exhausted', async () => {
@@ -46,14 +46,14 @@ describe('RateLimitService.enforce()', () => {
   it('uses the group key and hides headers when configured', async () => {
     mockEval.mockResolvedValueOnce([1, 5, 0, 30]);
     const r = await RateLimitService.getInstance().enforce({ ...base, route: { path: '/p', methods: ['GET'], rateLimit: { perMinute: 10, group: 'search', hideHeaders: true } } });
-    expect(mockEval.mock.calls[0][2]).toBe('ratelimit:group:search:ip:1.2.3.4:m');
+    expect(mockEval.mock.calls[0][0]).toBe('ratelimit:group:search:ip:1.2.3.4:m:sw');
     expect(r.headers).toEqual({});
   });
 
   it('never puts a raw API key in the Redis key (security 8)', async () => {
     mockEval.mockResolvedValueOnce([1, 5, 0, 30]);
     await RateLimitService.getInstance().enforce({ ...base, apiKey: 'sk_live_supersecret', route: { path: '/p', methods: ['GET'], rateLimit: { perMinute: 10, key: 'API_KEY' } } });
-    expect(mockEval.mock.calls[0][2]).not.toContain('supersecret');
-    expect(mockEval.mock.calls[0][2]).toMatch(/apikey:[0-9a-f]{16}:m$/);
+    expect(mockEval.mock.calls[0][0]).not.toContain('supersecret');
+    expect(mockEval.mock.calls[0][0]).toMatch(/apikey:[0-9a-f]{16}:m:sw$/);
   });
 });

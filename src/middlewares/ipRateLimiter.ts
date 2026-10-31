@@ -5,6 +5,7 @@ import RedisService from '../services/redis.service';
 import AlertService from '../utils/alerts';
 import { getClientIp } from '../utils/clientIp';
 import { rateLimitHeaders } from '../utils/rateLimitHeaders';
+import { defineScript, runScript } from '../utils/redisScript';
 
 /**
  * Global per-IP token bucket in Redis, plus temporary blocking of IPs that keep bursting.
@@ -27,12 +28,20 @@ interface IPRateLimiterOptions {
 
 const logger = getLogger();
 
-// Refill by elapsed time, consume one token if available. Returns {allowed, tokensLeft, retryAfterSeconds}.
-const TOKEN_BUCKET_SCRIPT = `
+// One round trip per request: first the block check, then refill by elapsed time and consume one
+// token if available. A blocked IP returns {-1, 0, msLeftOnBlock} without touching its bucket;
+// otherwise {allowed, tokensLeft, retryAfterSeconds}.
+const TOKEN_BUCKET = defineScript('sancusIpBucket', 2, `
   local key = KEYS[1]
+  local blockedKey = KEYS[2]
   local now = tonumber(ARGV[1])
   local capacity = tonumber(ARGV[2])
   local refillRate = tonumber(ARGV[3])
+
+  local blockedMs = redis.call('PTTL', blockedKey)
+  if blockedMs > 0 then
+    return {-1, 0, blockedMs}
+  end
 
   local bucket = redis.call('HMGET', key, 'tokens', 'lastRefill')
   local tokens = tonumber(bucket[1]) or capacity
@@ -51,7 +60,7 @@ const TOKEN_BUCKET_SCRIPT = `
   redis.call('HSET', key, 'tokens', tokens, 'lastRefill', now)
   redis.call('EXPIRE', key, 600)
   return {allowed, math.floor(tokens), retryAfter}
-`;
+`);
 
 class IPRateLimiter {
   private readonly redisService = RedisService.getInstance();
@@ -73,13 +82,6 @@ class IPRateLimiter {
       ...(options.trustedIps ?? []),
       ...(process.env.TRUSTED_IPS || '').split(',').map((ip) => ip.trim()).filter(Boolean),
     ]);
-  }
-
-  private async blockedUntil(ip: string): Promise<number | undefined> {
-    const redis = this.redisService.getClient();
-    if (!redis) return undefined;
-    const ttl = await redis.ttl(`blocked:ip:${ip}`);
-    return ttl > 0 ? Date.now() + ttl * 1000 : undefined;
   }
 
   /** Record a 429 for this IP; block it once it has bursted `blockThreshold` times in the window. */
@@ -115,21 +117,20 @@ class IPRateLimiter {
       if (!redis) return next(); // fail open
 
       try {
-        const until = await this.blockedUntil(ip);
-        if (until) {
-          res.setHeader('Retry-After', String(Math.ceil((until - Date.now()) / 1000)));
+        const [allowed, tokens, retryAfter] = await runScript<[number, number, number]>(
+          redis, TOKEN_BUCKET, `ipratelimit:bucket:${ip}`, `blocked:ip:${ip}`, Date.now(), this.capacity, this.refillRatePerSecond
+        );
+
+        if (allowed === 1) return next();
+        if (allowed === -1) {
+          const blockedMs = retryAfter;
+          res.setHeader('Retry-After', String(Math.ceil(blockedMs / 1000)));
           return res.status(403).json({
             error: 'Forbidden',
             message: 'Your IP address has been temporarily blocked due to suspicious activity.',
-            blockedUntil: new Date(until).toISOString(),
+            blockedUntil: new Date(Date.now() + blockedMs).toISOString(),
           });
         }
-
-        const [allowed, tokens, retryAfter] = (await redis.eval(
-          TOKEN_BUCKET_SCRIPT, 1, `ipratelimit:bucket:${ip}`, Date.now(), this.capacity, this.refillRatePerSecond
-        )) as [number, number, number];
-
-        if (allowed === 1) return next();
 
         rateLimited.inc({ service: '-', route: '-', scope: 'ip' });
         await this.trackBurst(ip).catch((e) => logger.warn({ err: (e as Error).message }, 'burst tracking failed'));

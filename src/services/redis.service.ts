@@ -13,6 +13,7 @@
 import Redis from 'ioredis';
 import getLogger from '../configs/logger';
 import AlertService from '../utils/alerts';
+import { installScripts } from '../utils/redisScript';
 
 const logger = getLogger();
 
@@ -138,8 +139,14 @@ class RedisService {
       keepAlive: 30000, // Keep connections alive
       connectTimeout: 10000, // Connection timeout
       commandTimeout: this.commandTimeoutMs,
-      // Enable connection pooling (default behavior in ioredis)
+      // Commands issued in the same event-loop tick go out as one write. Under load a request's
+      // limiter, token and cache commands share writes with other requests', which cuts syscalls
+      // and Redis CPU. REDIS_AUTO_PIPELINING=false turns it off.
+      enableAutoPipelining: process.env.REDIS_AUTO_PIPELINING !== 'false',
     });
+
+    // Lua scripts go on the client before its first command (see utils/redisScript).
+    installScripts(this.redis);
 
     // Every command funnels through sendCommand: watch for timeouts there.
     const client = this.redis as any;
