@@ -87,12 +87,22 @@ class IPRateLimiter {
     ]);
   }
 
+  /**
+   * Every per-IP key carries a `{ip}` hash tag so that, on a Redis Cluster, the token-bucket
+   * script (2 KEYS) and the burst+bucket DEL below land on one slot instead of raising
+   * CROSSSLOT (which the limiter catches and fails open on — i.e. no limiting at all).
+   */
+  private static ipKeys(ip: string) {
+    const tag = `{${ip}}`;
+    return { bucket: `ipratelimit:bucket:${tag}`, blocked: `blocked:ip:${tag}`, burst: `ipratelimit:burst:${tag}` };
+  }
+
   /** Record a 429 for this IP; block it once it has bursted `blockThreshold` times in the window. */
   private async trackBurst(ip: string): Promise<void> {
     const redis = this.redisService.getClient();
     if (!redis) return;
     const now = Date.now();
-    const key = `ipratelimit:burst:${ip}`;
+    const { bucket, blocked, burst: key } = IPRateLimiter.ipKeys(ip);
     await redis.zadd(key, now, `${now}-${Math.random()}`);
     await redis.zremrangebyscore(key, 0, now - this.blockWindowMs);
     await redis.pexpire(key, this.blockWindowMs);
@@ -100,9 +110,9 @@ class IPRateLimiter {
 
     const shouldBlock = violations >= this.blockThreshold;
     if (shouldBlock) {
-      await redis.set(`blocked:ip:${ip}`, String(now), 'PX', this.blockDurationMs);
+      await redis.set(blocked, String(now), 'PX', this.blockDurationMs);
       this.blocked.set(ip, { until: now + this.blockDurationMs });
-      await redis.del(key, `ipratelimit:bucket:${ip}`);
+      await redis.del(key, bucket);
       logger.warn({ ip, violations }, 'IP blocked for repeated rate-limit bursts');
     }
     this.alertService.alert(
@@ -133,8 +143,9 @@ class IPRateLimiter {
       if (!redis) return next(); // fail open
 
       try {
+        const { bucket, blocked } = IPRateLimiter.ipKeys(ip);
         const [allowed, tokens, retryAfter] = await runScript<[number, number, number]>(
-          redis, TOKEN_BUCKET, `ipratelimit:bucket:${ip}`, `blocked:ip:${ip}`, Date.now(), this.capacity, this.refillRatePerSecond
+          redis, TOKEN_BUCKET, bucket, blocked, Date.now(), this.capacity, this.refillRatePerSecond
         );
 
         if (allowed === 1) return next();
